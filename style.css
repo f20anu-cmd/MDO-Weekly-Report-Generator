@@ -1,103 +1,21 @@
-body {
-  font-family: Roboto, Arial, sans-serif;
-  background: #f5f7fb;
-  margin: 0;
-}
-
-.topbar {
-  background: white;
-  border-bottom: 1px solid #ddd;
-  padding: 12px 16px;
-  display: flex;
-  justify-content: space-between;
-}
-
-.brand { display:flex; gap:12px; align-items:center }
+body { font-family: Roboto, Arial; background:#f4f6fb; margin:0; }
+.topbar { background:#fff; padding:12px; display:flex; justify-content:space-between; }
 .logo { height:40px }
+.container { max-width:1200px; margin:auto; padding:16px }
+.card { background:#fff; padding:16px; margin-bottom:20px; border-radius:12px }
+.formGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px }
 
-.container {
-  max-width: 1200px;
-  margin: auto;
-  padding: 16px;
-}
+.table { width:100%; border-collapse:collapse }
+.table th,.table td { border:1px solid #ddd; padding:8px }
 
-.card {
-  background: white;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.formGrid {
-  display: grid;
-  grid-template-columns: repeat(3,1fr);
-  gap: 10px;
-}
-
-input, select {
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-}
-
-.table th, .table td {
-  border: 1px solid #ddd;
-  padding: 8px;
-}
-
-.sectionHead {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.btn {
-  padding: 8px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.btn-primary {
-  background: #2563eb;
-  color: white;
-  border: none;
-}
-
-.btn-outline {
-  border: 1px solid #aaa;
-  background: white;
-}
-
-.btn-outline.danger {
-  border-color: red;
-  color: red;
-}
+.btn-primary { background:#2563eb; color:white; border:none; padding:8px 12px }
 
 .npiSummary {
-  margin-top: 14px;
-  padding: 16px;
-  background: linear-gradient(135deg,#e0f2fe,#dbeafe,#e9d5ff);
-  border-radius: 12px;
-  display: flex;
-  justify-content: space-between;
-}
-
-.npiMetric span {
-  font-size: 12px;
-  color: #1e3a8a;
-}
-
-.npiMetric strong {
-  font-size: 20px;
-}
-
-.plainSummary {
-  margin-top: 12px;
-  font-size: 16px;
+  margin-top:12px;
+  padding:16px;
+  border-radius:12px;
+  background:linear-gradient(135deg,#e0f2fe,#dbeafe,#e9d5ff);
+  display:flex;
+  justify-content:space-between;
+  font-size:18px;
 }
