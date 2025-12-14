@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>Performance Report</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- XLSX -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -12,18 +11,19 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.29/dist/jspdf.plugin.autotable.min.js"></script>
 
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
 
-<h1 class="report-title">Performance Report</h1>
-<p class="report-subtitle">Weekly Field Performance</p>
+<div class="page">
 
-<!-- 1) MDO DETAILS -->
-<h2>1) MDO Details</h2>
+<h1 class="title">Performance Report</h1>
+<p class="subtitle">Weekly Field Performance</p>
 
-<div class="form-grid">
+<!-- ================= MDO DETAILS ================= -->
+<h2 class="section">MDO Details</h2>
+<div class="grid">
   <label>Name <input id="mdoName"></label>
   <label>HQ <input id="hq"></label>
   <label>Region <select id="region"></select></label>
@@ -32,56 +32,112 @@
   <label>Week <select id="week"></select></label>
 </div>
 
-<!-- 2) NPI PERFORMANCE -->
-<h2>NPI PERFORMANCE UPDATE</h2>
-<button id="npiAdd">Add Row</button>
-<button id="npiClear">Clear</button>
+<!-- ================= NPI PERFORMANCE ================= -->
+<h2 class="section">NPI Performance Update</h2>
+<button onclick="addNpi()">Add Row</button>
+<button onclick="clearNpi()">Clear</button>
 
 <table id="npiTable">
-  <thead>
-    <tr>
-      <th>#</th>
-      <th>Product</th>
-      <th>Plan (L/Kg)</th>
-      <th>Actual (L/Kg)</th>
-      <th>Total Incentive Earned (Rs)</th>
-      <th>Action</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
+<thead>
+<tr>
+  <th>#</th><th>Product</th><th>Plan (L/Kg)</th>
+  <th>Actual (L/Kg)</th><th>Incentive Earned (Rs)</th><th>Action</th>
+</tr>
+</thead>
+<tbody></tbody>
 </table>
 
-<div class="highlight">
-  CONGRATULATIONS<br>
-  You have earned <span id="npiTotal">0</span> Rs !!!
+<div class="highlight blue">
+  CONGRATULATIONS – Incentive Earned:
+  <span id="npiTotal">0</span> Rs
 </div>
 
-<!-- 3) OTHER PRODUCT PERFORMANCE -->
-<h2>OTHER PRODUCT PERFORMANCE UPDATE</h2>
-<button id="otherAdd">Add Row</button>
-<button id="otherClear">Clear</button>
+<!-- ================= OTHER PRODUCTS ================= -->
+<h2 class="section">Other Product Performance</h2>
+<button onclick="addOther()">Add Row</button>
+<button onclick="clearOther()">Clear</button>
 
 <table id="otherTable">
-  <thead>
-    <tr>
-      <th>#</th>
-      <th>Product</th>
-      <th>Plan (L/Kg)</th>
-      <th>Actual (L/Kg)</th>
-      <th>Total Revenue (Rs)</th>
-      <th>Action</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
+<thead>
+<tr>
+  <th>#</th><th>Product</th><th>Plan (L/Kg)</th>
+  <th>Actual (L/Kg)</th><th>Total Revenue (Rs)</th><th>Action</th>
+</tr>
+</thead>
+<tbody></tbody>
 </table>
 
-<div class="highlight">
-  TOTAL REVENUE EARNED: <span id="otherTotal">0</span> Rs
+<div class="highlight lightblue">
+  Total Revenue Generated:
+  <span id="otherTotal">0</span> Rs
 </div>
 
-<!-- GENERATE PDF (ONLY AT END) -->
-<br><br>
-<button id="generatePdf" class="pdf-btn">Generate A4 PDF</button>
+<!-- ================= ACTIVITIES ================= -->
+<h2 class="section">Activities Update</h2>
+<button onclick="addActivity()">Add Row</button>
+<button onclick="clearActivity()">Clear</button>
+
+<table id="activityTable">
+<thead>
+<tr>
+  <th>#</th><th>Activity</th><th>Plan No</th>
+  <th>Actual No</th><th>NPI Focused</th><th>Action</th>
+</tr>
+</thead>
+<tbody></tbody>
+<tfoot>
+<tr class="total-row">
+  <td colspan="2">TOTAL</td>
+  <td id="actPlan">0</td>
+  <td id="actActual">0</td>
+  <td id="actNpi">0</td>
+  <td></td>
+</tr>
+</tfoot>
+</table>
+
+<!-- ================= NEXT WEEK PLAN ================= -->
+<h2 class="section">Next Week Product Plan</h2>
+<button onclick="addNext()">Add Row</button>
+<button onclick="clearNext()">Clear</button>
+
+<table id="nextTable">
+<thead>
+<tr>
+  <th>#</th><th>Product</th><th>Plan (L/Kg)</th>
+  <th>Actual (L/Kg)</th><th>Revenue (Rs)</th>
+  <th>Incentive (Rs)</th><th>Action</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<div class="highlight blue">
+  Next Week Revenue: <span id="nwRevenue">0</span> Rs<br>
+  Incentive Opportunity: <span id="nwIncentive">0</span> Rs
+</div>
+
+<!-- ================= SPECIAL ACHIEVEMENT ================= -->
+<h2 class="section">Special Achievement</h2>
+<textarea id="specialText" rows="4"
+ placeholder="Describe the special achievement..."></textarea>
+
+<button onclick="addSpecial()">Add Photo</button>
+<button onclick="clearSpecial()">Clear</button>
+
+<table id="specialTable">
+<thead>
+<tr><th>#</th><th>Activity</th><th>Photo</th><th>Action</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<!-- ================= PDF ================= -->
+<div class="pdf-area">
+  <button class="pdf-btn" onclick="generatePDF()">Generate A4 PDF</button>
+</div>
+
+</div>
 
 <script src="app.js"></script>
 <script src="pdf.js"></script>

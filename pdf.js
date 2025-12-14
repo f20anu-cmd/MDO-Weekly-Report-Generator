@@ -1,45 +1,40 @@
 (function(){
   const { jsPDF } = window.jspdf;
 
-  window.generateA4Pdf = function(d){
-    const doc = new jsPDF("p","mm","a4");
-    let y = 15;
+  window.generatePDF = function(){
+    const doc=new jsPDF("p","mm","a4");
+    let y=15;
+    const t=s=>{doc.text(s,15,y);y+=6;};
 
-    function line(txt){
-      doc.text(txt, 15, y); y+=7;
-    }
+    t("Performance Report");
+    t(`Name: ${mdoName.value}`);
+    t(`HQ: ${hq.value}`);
+    t(`Region: ${region.value}`);
+    t(`Territory: ${territory.value}`);
+    t(`Month: ${month.value}   Week: ${week.value}`);
 
-    doc.setFont("times","bold");
-    line("Performance Report");
-    doc.setFont("times","normal");
-    line(`Name: ${d.mdoName}`);
-    line(`HQ: ${d.hq}`);
-    line(`Region: ${d.region}`);
-    line(`Territory: ${d.territory}`);
-    line(`Month: ${d.month}   Week: ${d.week}`);
+    y+=4;
+    doc.autoTable({startY:y,html:"#npiTable"});
+    y=doc.lastAutoTable.finalY+4;
+    t(`Total Incentive: ${npiTotal.innerText} Rs`);
 
-    y+=5;
-    doc.setFont("times","bold");
-    line("NPI PERFORMANCE UPDATE");
-    doc.autoTable({
-      startY:y,
-      head:[["Product","Plan","Actual","Incentive"]],
-      body:d.npiRows.map(r=>[r.p,r.plan,r.act,(r.act||0)*0]),
-      styles:{font:"times"}
-    });
+    y+=4;
+    doc.autoTable({startY:y,html:"#otherTable"});
+    y=doc.lastAutoTable.finalY+4;
+    t(`Total Revenue: ${otherTotal.innerText} Rs`);
 
-    y=doc.lastAutoTable.finalY+6;
-    doc.text(`Total Incentive Earned: ${document.getElementById("npiTotal").innerText} Rs`,15,y);
+    y+=4;
+    doc.autoTable({startY:y,html:"#activityTable"});
 
-    y+=10;
-    doc.setFont("times","bold");
-    line("OTHER PRODUCT PERFORMANCE UPDATE");
-    doc.autoTable({
-      startY:y,
-      head:[["Product","Plan","Actual","Revenue"]],
-      body:d.otherRows.map(r=>[r.p,r.plan,r.act,(r.act||0)*0]),
-      styles:{font:"times"}
-    });
+    y+=4;
+    doc.autoTable({startY:y,html:"#nextTable"});
+    y=doc.lastAutoTable.finalY+4;
+    t(`Next Week Revenue: ${nwRevenue.innerText} Rs`);
+    t(`Next Week Incentive: ${nwIncentive.innerText} Rs`);
+
+    y+=4;
+    t("Special Achievement:");
+    doc.text(specialText.value||"-",15,y,{maxWidth:180});
 
     doc.save("Performance_Report.pdf");
   };
