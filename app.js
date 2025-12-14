@@ -1,15 +1,12 @@
 /* =========================================================
-  BACKEND MASTER DATA (ADMIN):
+  Backend Excel (admin maintained):
   data/master_data.xlsx
 
-  Sheet 1: "Region Mapping"
-    Columns: Region, Territtory   (note spelling)
-
-  Sheet 2: "NPI Sheet"
-    Columns: Product, Realised Value in Rs, Portfolio, Incentive, Category
-
-  Sheet 3: "Product List"
-    Columns: Product, Realised Value, Portfolio, Incentive, Category
+  Sheets used:
+  - Region Mapping: Region, Territtory
+  - NPI sheet / NPI Sheet: Product, Realised Value in Rs, Incentive, Category
+  - Product List: Product, Realised Value, Category
+  - Activity List: Activity Type
 ========================================================= */
 
 const $ = (id) => document.getElementById(id);
@@ -18,50 +15,44 @@ const CFG = {
   excelPath: "data/master_data.xlsx",
   months: ["January","February","March","April","May","June","July","August","September","October","November","December"],
   weeks: ["1","2","3","4","5"],
-  activityTypes: ["One to One Farmer","Village Farmer Meeting","Field Day","OFM","LFM","Demo","Special Campaign","Custom"],
-  limits: { activityPhotos: 16, specialPhotos: 4 },
-  storageKey: "mdo_weekly_report_draft_v3"
+  maxActivityPhotos: 16,
+  maxSpecialPhotos: 4,
+  storageKey: "performance_report_draft_v1"
 };
 
 const Master = {
-  loaded: false,
-  regionToTerritories: new Map(),  // region -> [territory...]
-  npiProducts: [],                 // [product...]
-  npiMeta: new Map(),              // product -> { realised, incentive }
-  otherProducts: [],               // [product...] from Product List where Category != NPI
-  productMeta: new Map(),          // product -> { realised, category }
-  allProducts: []                  // union of product list + NPI
+  regionToTerritories: new Map(),
+  npiProducts: [],
+  npiMeta: new Map(),        // product -> { realised, incentive }
+  otherProducts: [],
+  productMeta: new Map(),    // product -> { realised, category }
+  activityTypes: [],
+  allProducts: []
 };
 
 const State = {
-  mdo: { name:"", headquarter:"", region:"", territory:"", month:"", week:"" },
-  npiRows: [],           // {product, plan, ach, revenue, incentiveEarned}
-  otherRows: [],         // {product, plan, ach, revenue}
-  activityRows: [],      // {typeObj, planned, achieved, npiFocused}
-  activityPhotos: [],    // {type, dataUrl}
-  nextWeekRows: [],      // {product, placement, liquidation, revenue}
-  activityPlanRows: [],  // {typeObj, planned, villages}
-  special: {
-    desc: "",
-    photos: [],          // {type, dataUrl}
-    rows: []             // {product, placement, liquidation, revenue}
-  }
+  // MDO
+  mdoName: "",
+  hq: "",
+  region: "",
+  territory: "",
+  month: "",
+  week: "",
+
+  // tables
+  npiRows: [],      // {product, plan, actual, incentiveEarned}
+  otherRows: [],    // {product, plan, actual, revenue}
+  actRows: [],      // {typeObj, planNo, actualNo, npiNo}
+
+  // photos (rows)
+  photoRows: [],    // {activity, dataUrl, fileName}
+  nwRows: [],       // {product, plan, actual, revenue, incentive}
+  apRows: [],       // {typeObj, planNo, villages, villageNo}
+
+  // special
+  spDesc: "",
+  spPhotoRows: []   // {activity, dataUrl, fileName}
 };
-
-function showError(msg){
-  const box = $("errorBox");
-  box.textContent = msg;
-  box.classList.remove("hidden");
-}
-
-function hideLoading(){
-  $("loading").classList.add("hidden");
-}
-
-function moneyINR(n){
-  const v = Math.round(Number(n || 0));
-  return "₹ " + v.toLocaleString("en-IN");
-}
 
 function toNum(x){
   if (x === null || x === undefined) return 0;
@@ -69,451 +60,62 @@ function toNum(x){
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }
+function rs(n){
+  return Math.round(Number(n||0)).toLocaleString("en-IN");
+}
 
-function setOptions(sel, arr, placeholder="Select"){
+function showFatal(msg){
+  $("fatalError").classList.remove("hidden");
+  if(msg) $("fatalError").innerHTML = msg;
+}
+
+function safeSheet(wb, ...names){
+  for(const n of names){
+    if(wb.Sheets[n]) return wb.Sheets[n];
+  }
+  return null;
+}
+
+function setOptions(sel, arr, placeholder){
   sel.innerHTML = "";
   const ph = document.createElement("option");
   ph.value = "";
-  ph.textContent = placeholder;
+  ph.textContent = placeholder || "Select";
   sel.appendChild(ph);
-  for(const it of arr){
+  for(const v of arr){
     const op = document.createElement("option");
-    op.value = it;
-    op.textContent = it;
+    op.value = v;
+    op.textContent = v;
     sel.appendChild(op);
   }
 }
 
 function saveDraft(){
-  State.mdo.name = $("mdoName").value || "";
-  State.mdo.headquarter = $("headquarter").value || "";
-  State.mdo.region = $("regionSelect").value || "";
-  State.mdo.territory = $("territorySelect").value || "";
-  State.mdo.month = $("monthSelect").value || "";
-  State.mdo.week = $("weekSelect").value || "";
-  State.special.desc = $("specialDesc").value || "";
-  localStorage.setItem(CFG.storageKey, JSON.stringify(State));
+  const payload = {
+    ...State,
+    mdoName: $("mdoName").value || "",
+    hq: $("hq").value || "",
+    region: $("region").value || "",
+    territory: $("territory").value || "",
+    month: $("month").value || "",
+    week: $("week").value || "",
+    spDesc: $("spDesc").value || ""
+  };
+  localStorage.setItem(CFG.storageKey, JSON.stringify(payload));
 }
 
 function loadDraft(){
   const raw = localStorage.getItem(CFG.storageKey);
   if(!raw) return;
   try{
-    const parsed = JSON.parse(raw);
-    // soft merge
-    Object.assign(State, parsed);
-    State.mdo = Object.assign({name:"",headquarter:"",region:"",territory:"",month:"",week:""}, State.mdo||{});
-    State.npiRows = Array.isArray(State.npiRows) ? State.npiRows : [];
-    State.otherRows = Array.isArray(State.otherRows) ? State.otherRows : [];
-    State.activityRows = Array.isArray(State.activityRows) ? State.activityRows : [];
-    State.activityPhotos = Array.isArray(State.activityPhotos) ? State.activityPhotos : [];
-    State.nextWeekRows = Array.isArray(State.nextWeekRows) ? State.nextWeekRows : [];
-    State.activityPlanRows = Array.isArray(State.activityPlanRows) ? State.activityPlanRows : [];
-    State.special = State.special || {desc:"",photos:[],rows:[]};
-    State.special.photos = Array.isArray(State.special.photos) ? State.special.photos : [];
-    State.special.rows = Array.isArray(State.special.rows) ? State.special.rows : [];
-  }catch(e){}
+    const d = JSON.parse(raw);
+    Object.assign(State, d);
+  }catch{}
 }
 
 function clearAll(){
   localStorage.removeItem(CFG.storageKey);
   location.reload();
-}
-
-/* ---------------- Excel loading (backend) ---------------- */
-
-async function loadMasterExcel(){
-  const res = await fetch(CFG.excelPath, { cache: "no-store" });
-  if(!res.ok){
-    throw new Error(`Cannot load ${CFG.excelPath}. Ensure the file exists in /data/ and GitHub Pages is serving it.`);
-  }
-  const buf = await res.arrayBuffer();
-  const wb = XLSX.read(buf, {type:"array"});
-
-  const sheetRM = wb.Sheets["Region Mapping"];
-  const sheetNPI = wb.Sheets["NPI Sheet"];
-  const sheetPL = wb.Sheets["Product List"];
-
-  if(!sheetRM) throw new Error(`Sheet missing: "Region Mapping"`);
-  if(!sheetNPI) throw new Error(`Sheet missing: "NPI Sheet"`);
-  if(!sheetPL) throw new Error(`Sheet missing: "Product List"`);
-
-  const rm = XLSX.utils.sheet_to_json(sheetRM, { defval:"" });
-  const npi = XLSX.utils.sheet_to_json(sheetNPI, { defval:"" });
-  const pl  = XLSX.utils.sheet_to_json(sheetPL, { defval:"" });
-
-  // Region -> territories
-  const map = new Map();
-  for(const r of rm){
-    const region = String(r["Region"]||"").trim();
-    const terr = String(r["Territtory"]||"").trim();
-    if(!region || !terr) continue;
-    if(!map.has(region)) map.set(region, []);
-    map.get(region).push(terr);
-  }
-  for(const [k,v] of map){
-    map.set(k, [...new Set(v)].sort((a,b)=>a.localeCompare(b)));
-  }
-  Master.regionToTerritories = map;
-
-  // NPI meta
-  const npiMeta = new Map();
-  for(const r of npi){
-    const product = String(r["Product"]||"").trim();
-    if(!product) continue;
-    npiMeta.set(product, {
-      realised: toNum(r["Realised Value in Rs"]),
-      incentive: toNum(r["Incentive"])
-    });
-  }
-  Master.npiMeta = npiMeta;
-  Master.npiProducts = [...npiMeta.keys()].sort((a,b)=>a.localeCompare(b));
-
-  // Product list meta
-  const productMeta = new Map();
-  const other = [];
-  const all = new Set();
-
-  for(const r of pl){
-    const product = String(r["Product"]||"").trim();
-    if(!product) continue;
-    const category = String(r["Category"]||"").trim();
-    const realised = toNum(r["Realised Value"]);
-    productMeta.set(product, { realised, category });
-    all.add(product);
-    if(category.toLowerCase() !== "npi") other.push(product);
-  }
-  // add NPI products into all
-  for(const p of Master.npiProducts) all.add(p);
-
-  Master.productMeta = productMeta;
-  Master.otherProducts = [...new Set(other)].sort((a,b)=>a.localeCompare(b));
-  Master.allProducts = [...all].sort((a,b)=>a.localeCompare(b));
-
-  Master.loaded = true;
-}
-
-/* ---------------- UI helpers ---------------- */
-
-function makeDelBtn(onClick){
-  const b = document.createElement("button");
-  b.className = "iconbtn";
-  b.textContent = "✕";
-  b.title = "Remove";
-  b.addEventListener("click", onClick);
-  return b;
-}
-
-function numberInput(value, onInput){
-  const i = document.createElement("input");
-  i.type = "number";
-  i.min = "0";
-  i.step = "any";
-  i.value = value ?? "";
-  i.addEventListener("input", ()=>onInput(i.value));
-  return i;
-}
-
-function activitySelector(typeObj, onChange){
-  // typeObj: {mode:"preset"|"custom", value:""}
-  const wrap = document.createElement("div");
-  wrap.style.display = "grid";
-  wrap.style.gap = "6px";
-
-  const sel = document.createElement("select");
-  setOptions(sel, CFG.activityTypes, "Select activity");
-  const custom = document.createElement("input");
-  custom.type = "text";
-  custom.placeholder = "Custom activity name";
-  custom.classList.add("hidden");
-
-  if(typeObj?.mode === "custom"){
-    sel.value = "Custom";
-    custom.classList.remove("hidden");
-    custom.value = typeObj.value || "";
-  }else{
-    sel.value = typeObj?.value || "";
-  }
-
-  sel.addEventListener("change", ()=>{
-    if(sel.value === "Custom"){
-      custom.classList.remove("hidden");
-      onChange({mode:"custom", value: custom.value || ""});
-    }else{
-      custom.classList.add("hidden");
-      custom.value = "";
-      onChange({mode:"preset", value: sel.value});
-    }
-  });
-
-  custom.addEventListener("input", ()=>{
-    onChange({mode:"custom", value: custom.value || ""});
-  });
-
-  wrap.appendChild(sel);
-  wrap.appendChild(custom);
-  return wrap;
-}
-
-function getActivityLabel(obj){
-  if(!obj) return "";
-  if(obj.mode === "custom") return obj.value || "Custom";
-  return obj.value || "";
-}
-
-/* ---------------- Render functions ---------------- */
-
-function recalcAll(){
-  // NPI totals
-  let npiRev = 0, npiInc = 0;
-  for(const r of State.npiRows){
-    const meta = Master.npiMeta.get(r.product) || {realised:0,incentive:0};
-    const ach = toNum(r.ach);
-    r.revenue = ach * meta.realised;
-    r.incentiveEarned = ach * meta.incentive;
-    npiRev += r.revenue;
-    npiInc += r.incentiveEarned;
-  }
-  $("npiTotalRevenue").textContent = moneyINR(npiRev);
-  $("npiTotalIncentive").textContent = moneyINR(npiInc);
-
-  // Other totals
-  let otherRev = 0;
-  for(const r of State.otherRows){
-    const meta = Master.productMeta.get(r.product) || {realised:0};
-    const ach = toNum(r.ach);
-    r.revenue = ach * (meta.realised || 0);
-    otherRev += r.revenue;
-  }
-  $("otherTotalRevenue").textContent = moneyINR(otherRev);
-
-  // Next week totals
-  let nwRev = 0;
-  for(const r of State.nextWeekRows){
-    const liq = toNum(r.liquidation);
-    const fromPL = Master.productMeta.get(r.product);
-    const fromNPI = Master.npiMeta.get(r.product);
-    const realised = (fromPL && fromPL.realised) ? fromPL.realised : (fromNPI ? fromNPI.realised : 0);
-    r.revenue = liq * realised;
-    nwRev += r.revenue;
-  }
-  $("nwTotalRevenue").textContent = moneyINR(nwRev);
-
-  // Special totals
-  let spRev = 0;
-  for(const r of State.special.rows){
-    const liq = toNum(r.liquidation);
-    const fromPL = Master.productMeta.get(r.product);
-    const fromNPI = Master.npiMeta.get(r.product);
-    const realised = (fromPL && fromPL.realised) ? fromPL.realised : (fromNPI ? fromNPI.realised : 0);
-    r.revenue = liq * realised;
-    spRev += r.revenue;
-  }
-  $("specialTotalRevenue").textContent = moneyINR(spRev);
-
-  // Activity totals
-  let p=0,a=0,n=0;
-  for(const r of State.activityRows){
-    p += toNum(r.planned);
-    a += toNum(r.achieved);
-    n += toNum(r.npiFocused);
-  }
-  $("actPlanTotal").textContent = String(p);
-  $("actAchTotal").textContent = String(a);
-  $("actNpiTotal").textContent = String(n);
-
-  saveDraft();
-}
-
-function renderNpiTable(){
-  const tbody = $("npiTable").querySelector("tbody");
-  tbody.innerHTML = "";
-
-  State.npiRows.forEach((r, idx)=>{
-    const tr = document.createElement("tr");
-
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
-
-    // product select
-    const tdP = document.createElement("td");
-    const sel = document.createElement("select");
-    setOptions(sel, Master.npiProducts, "Select product");
-    sel.value = r.product || "";
-    sel.addEventListener("change", ()=>{ r.product = sel.value; recalcAll(); renderNpiTable(); });
-    tdP.appendChild(sel);
-    tr.appendChild(tdP);
-
-    // plan
-    const tdPlan = document.createElement("td"); tdPlan.className="num";
-    tdPlan.appendChild(numberInput(r.plan, v=>{ r.plan=v; saveDraft(); }));
-    tr.appendChild(tdPlan);
-
-    // achievement
-    const tdAch = document.createElement("td"); tdAch.className="num";
-    tdAch.appendChild(numberInput(r.ach, v=>{ r.ach=v; recalcAll(); renderNpiTable(); }));
-    tr.appendChild(tdAch);
-
-    // revenue / incentive earned
-    const tdRev = document.createElement("td"); tdRev.className="num"; tdRev.textContent = moneyINR(r.revenue||0);
-    const tdInc = document.createElement("td"); tdInc.className="num"; tdInc.textContent = moneyINR(r.incentiveEarned||0);
-    tr.appendChild(tdRev);
-    tr.appendChild(tdInc);
-
-    // delete
-    const tdDel = document.createElement("td");
-    tdDel.appendChild(makeDelBtn(()=>{ State.npiRows.splice(idx,1); renderNpiTable(); recalcAll(); }));
-    tr.appendChild(tdDel);
-
-    tbody.appendChild(tr);
-  });
-
-  recalcAll();
-}
-
-function renderOtherTable(){
-  const tbody = $("otherTable").querySelector("tbody");
-  tbody.innerHTML = "";
-
-  State.otherRows.forEach((r, idx)=>{
-    const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
-
-    const tdP = document.createElement("td");
-    const sel = document.createElement("select");
-    setOptions(sel, Master.otherProducts, "Select product");
-    sel.value = r.product || "";
-    sel.addEventListener("change", ()=>{ r.product = sel.value; recalcAll(); renderOtherTable(); });
-    tdP.appendChild(sel);
-    tr.appendChild(tdP);
-
-    const tdPlan = document.createElement("td"); tdPlan.className="num";
-    tdPlan.appendChild(numberInput(r.plan, v=>{ r.plan=v; saveDraft(); }));
-    tr.appendChild(tdPlan);
-
-    const tdAch = document.createElement("td"); tdAch.className="num";
-    tdAch.appendChild(numberInput(r.ach, v=>{ r.ach=v; recalcAll(); renderOtherTable(); }));
-    tr.appendChild(tdAch);
-
-    const tdRev = document.createElement("td"); tdRev.className="num"; tdRev.textContent = moneyINR(r.revenue||0);
-    tr.appendChild(tdRev);
-
-    const tdDel = document.createElement("td");
-    tdDel.appendChild(makeDelBtn(()=>{ State.otherRows.splice(idx,1); renderOtherTable(); recalcAll(); }));
-    tr.appendChild(tdDel);
-
-    tbody.appendChild(tr);
-  });
-
-  recalcAll();
-}
-
-function renderActivityTable(){
-  const tbody = $("activityTable").querySelector("tbody");
-  tbody.innerHTML = "";
-
-  State.activityRows.forEach((r, idx)=>{
-    const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
-
-    const tdT = document.createElement("td");
-    tdT.appendChild(activitySelector(r.typeObj, (v)=>{ r.typeObj=v; saveDraft(); }));
-    tr.appendChild(tdT);
-
-    const tdP = document.createElement("td"); tdP.className="num";
-    tdP.appendChild(numberInput(r.planned, v=>{ r.planned=v; recalcAll(); }));
-    tr.appendChild(tdP);
-
-    const tdA = document.createElement("td"); tdA.className="num";
-    tdA.appendChild(numberInput(r.achieved, v=>{ r.achieved=v; recalcAll(); }));
-    tr.appendChild(tdA);
-
-    const tdN = document.createElement("td"); tdN.className="num";
-    tdN.appendChild(numberInput(r.npiFocused, v=>{ r.npiFocused=v; recalcAll(); }));
-    tr.appendChild(tdN);
-
-    const tdDel = document.createElement("td");
-    tdDel.appendChild(makeDelBtn(()=>{ State.activityRows.splice(idx,1); renderActivityTable(); recalcAll(); }));
-    tr.appendChild(tdDel);
-
-    tbody.appendChild(tr);
-  });
-
-  recalcAll();
-}
-
-function renderNextWeekTable(){
-  const tbody = $("nextWeekTable").querySelector("tbody");
-  tbody.innerHTML = "";
-
-  State.nextWeekRows.forEach((r, idx)=>{
-    const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
-
-    const tdP = document.createElement("td");
-    const sel = document.createElement("select");
-    setOptions(sel, Master.allProducts, "Select product");
-    sel.value = r.product || "";
-    sel.addEventListener("change", ()=>{ r.product = sel.value; recalcAll(); renderNextWeekTable(); });
-    tdP.appendChild(sel);
-    tr.appendChild(tdP);
-
-    const tdPl = document.createElement("td"); tdPl.className="num";
-    tdPl.appendChild(numberInput(r.placement, v=>{ r.placement=v; saveDraft(); }));
-    tr.appendChild(tdPl);
-
-    const tdLiq = document.createElement("td"); tdLiq.className="num";
-    tdLiq.appendChild(numberInput(r.liquidation, v=>{ r.liquidation=v; recalcAll(); renderNextWeekTable(); }));
-    tr.appendChild(tdLiq);
-
-    const tdRev = document.createElement("td"); tdRev.className="num"; tdRev.textContent = moneyINR(r.revenue||0);
-    tr.appendChild(tdRev);
-
-    const tdDel = document.createElement("td");
-    tdDel.appendChild(makeDelBtn(()=>{ State.nextWeekRows.splice(idx,1); renderNextWeekTable(); recalcAll(); }));
-    tr.appendChild(tdDel);
-
-    tbody.appendChild(tr);
-  });
-
-  recalcAll();
-}
-
-function renderActivityPlanTable(){
-  const tbody = $("activityPlanTable").querySelector("tbody");
-  tbody.innerHTML = "";
-
-  State.activityPlanRows.forEach((r, idx)=>{
-    const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
-
-    const tdT = document.createElement("td");
-    tdT.appendChild(activitySelector(r.typeObj, (v)=>{ r.typeObj=v; saveDraft(); }));
-    tr.appendChild(tdT);
-
-    const tdP = document.createElement("td"); tdP.className="num";
-    tdP.appendChild(numberInput(r.planned, v=>{ r.planned=v; saveDraft(); }));
-    tr.appendChild(tdP);
-
-    const tdV = document.createElement("td");
-    const inp = document.createElement("input");
-    inp.type = "text";
-    inp.placeholder = "Village1, Village2, Village3";
-    inp.value = r.villages || "";
-    inp.addEventListener("input", ()=>{ r.villages = inp.value; renderActivityPlanTable(); saveDraft(); });
-    tdV.appendChild(inp);
-    tr.appendChild(tdV);
-
-    const tdC = document.createElement("td"); tdC.className="num";
-    const count = String(r.villages||"").split(",").map(s=>s.trim()).filter(Boolean).length;
-    tdC.textContent = String(count);
-    tr.appendChild(tdC);
-
-    const tdDel = document.createElement("td");
-    tdDel.appendChild(makeDelBtn(()=>{ State.activityPlanRows.splice(idx,1); renderActivityPlanTable(); saveDraft(); }));
-    tr.appendChild(tdDel);
-
-    tbody.appendChild(tr);
-  });
 }
 
 async function compressImage(file, maxW=1400, quality=0.78){
@@ -529,11 +131,433 @@ async function compressImage(file, maxW=1400, quality=0.78){
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-function renderActivityPhotos(){
-  $("photoCount").textContent = String(State.activityPhotos.length);
-  const grid = $("photoGrid");
+function typeSelector(typeObj, onChange){
+  // DD from Master.activityTypes + "Custom"
+  const wrap = document.createElement("div");
+  wrap.style.display = "grid";
+  wrap.style.gap = "6px";
+
+  const sel = document.createElement("select");
+  const custom = document.createElement("input");
+  custom.type = "text";
+  custom.placeholder = "Custom activity";
+  custom.style.display = "none";
+
+  const opts = [...Master.activityTypes];
+  setOptions(sel, opts, "Select activity");
+  // add Custom option
+  const optC = document.createElement("option");
+  optC.value = "__CUSTOM__";
+  optC.textContent = "Custom";
+  sel.appendChild(optC);
+
+  if(typeObj?.mode === "custom"){
+    sel.value = "__CUSTOM__";
+    custom.style.display = "block";
+    custom.value = typeObj.value || "";
+  } else {
+    sel.value = typeObj?.value || "";
+  }
+
+  sel.addEventListener("change", ()=>{
+    if(sel.value === "__CUSTOM__"){
+      custom.style.display = "block";
+      onChange({mode:"custom", value: custom.value || ""});
+    }else{
+      custom.style.display = "none";
+      custom.value = "";
+      onChange({mode:"preset", value: sel.value});
+    }
+  });
+
+  custom.addEventListener("input", ()=>{
+    onChange({mode:"custom", value: custom.value || ""});
+  });
+
+  wrap.appendChild(sel);
+  wrap.appendChild(custom);
+  return wrap;
+}
+
+function typeLabel(obj){
+  if(!obj) return "";
+  return obj.mode === "custom" ? (obj.value || "Custom") : (obj.value || "");
+}
+
+/* ---------------- Excel Load ---------------- */
+
+async function loadMasterExcel(){
+  if(typeof XLSX === "undefined"){
+    throw new Error("XLSX library failed to load.");
+  }
+  const res = await fetch(CFG.excelPath, {cache:"no-store"});
+  if(!res.ok){
+    throw new Error(`Cannot load ${CFG.excelPath}. Make sure it exists in your repo.`);
+  }
+  const wb = XLSX.read(await res.arrayBuffer(), {type:"array"});
+
+  const sRM = safeSheet(wb, "Region Mapping");
+  const sNPI = safeSheet(wb, "NPI sheet", "NPI Sheet");
+  const sPL  = safeSheet(wb, "Product List");
+  const sAL  = safeSheet(wb, "Activity List");
+
+  if(!sRM) throw new Error(`Missing sheet: Region Mapping`);
+  if(!sNPI) throw new Error(`Missing sheet: NPI sheet / NPI Sheet`);
+  if(!sPL) throw new Error(`Missing sheet: Product List`);
+  if(!sAL) throw new Error(`Missing sheet: Activity List`);
+
+  const rm = XLSX.utils.sheet_to_json(sRM, {defval:""});
+  const npi = XLSX.utils.sheet_to_json(sNPI, {defval:""});
+  const pl  = XLSX.utils.sheet_to_json(sPL, {defval:""});
+  const al  = XLSX.utils.sheet_to_json(sAL, {defval:""});
+
+  // Region mapping
+  const rmap = new Map();
+  for(const r of rm){
+    const region = String(r["Region"]||"").trim();
+    const terr = String(r["Territtory"]||"").trim();
+    if(!region || !terr) continue;
+    if(!rmap.has(region)) rmap.set(region, []);
+    rmap.get(region).push(terr);
+  }
+  for(const [k,v] of rmap){
+    rmap.set(k, [...new Set(v)].sort((a,b)=>a.localeCompare(b)));
+  }
+  Master.regionToTerritories = rmap;
+
+  // NPI meta
+  const npiMeta = new Map();
+  for(const r of npi){
+    const product = String(r["Product"]||"").trim();
+    if(!product) continue;
+    const realised = toNum(r["Realised Value in Rs"]);
+    const incentive = toNum(r["Incentive"]);
+    npiMeta.set(product, { realised, incentive });
+  }
+  Master.npiMeta = npiMeta;
+  Master.npiProducts = [...npiMeta.keys()].sort((a,b)=>a.localeCompare(b));
+
+  // Product list meta
+  const pMeta = new Map();
+  const otherProducts = [];
+  const allProductsSet = new Set(Master.npiProducts);
+
+  for(const r of pl){
+    const product = String(r["Product"]||"").trim();
+    if(!product) continue;
+    const realised = toNum(r["Realised Value"]);
+    const category = String(r["Category"]||"").trim();
+    pMeta.set(product, { realised, category });
+    allProductsSet.add(product);
+  }
+  Master.productMeta = pMeta;
+
+  // other products = product list where category != NPI and not present in NPI sheet
+  for(const [p,meta] of pMeta.entries()){
+    const cat = (meta.category||"").toLowerCase();
+    if(cat !== "npi" && !Master.npiMeta.has(p)){
+      otherProducts.push(p);
+    }
+  }
+  Master.otherProducts = [...new Set(otherProducts)].sort((a,b)=>a.localeCompare(b));
+  Master.allProducts = [...allProductsSet].sort((a,b)=>a.localeCompare(b));
+
+  // Activity list
+  const acts = [];
+  for(const r of al){
+    const a = String(r["Activity Type"]||"").trim();
+    if(a) acts.push(a);
+  }
+  Master.activityTypes = [...new Set(acts)];
+}
+
+/* ---------------- UI init ---------------- */
+
+function initMdoDropdowns(){
+  const regions = [...Master.regionToTerritories.keys()].sort((a,b)=>a.localeCompare(b));
+  setOptions($("region"), regions, "Select Region");
+
+  $("region").addEventListener("change", ()=>{
+    const terrs = Master.regionToTerritories.get($("region").value) || [];
+    setOptions($("territory"), terrs, "Select Territory");
+    $("territory").value = "";
+    saveDraft();
+  });
+  $("territory").addEventListener("change", saveDraft);
+
+  setOptions($("month"), CFG.months, "Select Month");
+  setOptions($("week"), CFG.weeks, "Select Week");
+
+  ["mdoName","hq","month","week"].forEach(id=>{
+    $(id).addEventListener("input", saveDraft);
+    $(id).addEventListener("change", saveDraft);
+  });
+}
+
+function applyDraft(){
+  $("mdoName").value = State.mdoName || "";
+  $("hq").value = State.hq || "";
+  $("month").value = State.month || "";
+  $("week").value = State.week || "";
+  $("spDesc").value = State.spDesc || "";
+
+  $("region").value = State.region || "";
+  const terrs = Master.regionToTerritories.get($("region").value) || [];
+  setOptions($("territory"), terrs, "Select Territory");
+  $("territory").value = State.territory || "";
+}
+
+function delBtn(onClick){
+  const b = document.createElement("button");
+  b.className = "iconbtn";
+  b.textContent = "✕";
+  b.title = "Remove";
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function numInput(value, onInput){
+  const i = document.createElement("input");
+  i.type = "number";
+  i.min = "0";
+  i.step = "any";
+  i.value = value ?? "";
+  i.addEventListener("input", ()=>onInput(i.value));
+  return i;
+}
+
+/* ---------------- Renders ---------------- */
+
+function recalcSummaries(){
+  // NPI total incentive
+  let npiTotal = 0;
+  for(const r of State.npiRows){
+    const meta = Master.npiMeta.get(r.product) || { incentive: 0 };
+    const actual = toNum(r.actual);
+    r.incentiveEarned = actual * meta.incentive;
+    npiTotal += r.incentiveEarned;
+  }
+  $("npiTotalIncentive").textContent = rs(npiTotal);
+
+  // Other total revenue
+  let otherTotal = 0;
+  for(const r of State.otherRows){
+    const meta = Master.productMeta.get(r.product) || { realised: 0 };
+    const actual = toNum(r.actual);
+    r.revenue = actual * meta.realised;
+    otherTotal += r.revenue;
+  }
+  $("otherTotalRevenue").textContent = rs(otherTotal);
+
+  // Activities totals
+  let p=0,a=0,n=0;
+  for(const r of State.actRows){
+    p += toNum(r.planNo);
+    a += toNum(r.actualNo);
+    n += toNum(r.npiNo);
+  }
+  $("actPlanTotal").textContent = String(p);
+  $("actActualTotal").textContent = String(a);
+  $("actNpiTotal").textContent = String(n);
+
+  // Next week totals
+  let nwRev=0, nwInc=0;
+  for(const r of State.nwRows){
+    const actual = toNum(r.actual);
+    const realised =
+      (Master.productMeta.get(r.product)?.realised) ??
+      (Master.npiMeta.get(r.product)?.realised) ??
+      0;
+
+    const incRate = Master.npiMeta.get(r.product)?.incentive ?? 0;
+
+    r.revenue = actual * realised;
+    r.incentive = actual * incRate;
+
+    nwRev += r.revenue;
+    nwInc += r.incentive;
+  }
+  $("nwTotalRevenue").textContent = rs(nwRev);
+  $("nwTotalIncentive").textContent = rs(nwInc);
+
+  // Activities plan village count computed per row in render
+
+  saveDraft();
+}
+
+function renderNpi(){
+  const tbody = $("npiTable").querySelector("tbody");
+  tbody.innerHTML = "";
+
+  State.npiRows.forEach((r, idx)=>{
+    const tr = document.createElement("tr");
+
+    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
+
+    // product dd
+    const tdP = document.createElement("td");
+    const sel = document.createElement("select");
+    setOptions(sel, Master.npiProducts, "Select product");
+    sel.value = r.product || "";
+    sel.addEventListener("change", ()=>{
+      r.product = sel.value;
+      recalcSummaries();
+      renderNpi();
+    });
+    tdP.appendChild(sel);
+    tr.appendChild(tdP);
+
+    // plan
+    const tdPlan = document.createElement("td"); tdPlan.className="num";
+    tdPlan.appendChild(numInput(r.plan, v=>{ r.plan=v; saveDraft(); }));
+    tr.appendChild(tdPlan);
+
+    // actual
+    const tdA = document.createElement("td"); tdA.className="num";
+    tdA.appendChild(numInput(r.actual, v=>{ r.actual=v; recalcSummaries(); renderNpi(); }));
+    tr.appendChild(tdA);
+
+    // incentive earned
+    const tdInc = document.createElement("td"); tdInc.className="num";
+    tdInc.textContent = rs(r.incentiveEarned || 0);
+    tr.appendChild(tdInc);
+
+    // delete
+    const tdDel = document.createElement("td");
+    tdDel.appendChild(delBtn(()=>{ State.npiRows.splice(idx,1); renderNpi(); recalcSummaries(); }));
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
+  });
+
+  recalcSummaries();
+}
+
+function renderOther(){
+  const tbody = $("otherTable").querySelector("tbody");
+  tbody.innerHTML = "";
+
+  State.otherRows.forEach((r, idx)=>{
+    const tr = document.createElement("tr");
+
+    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
+
+    const tdP = document.createElement("td");
+    const sel = document.createElement("select");
+    setOptions(sel, Master.otherProducts, "Select product");
+    sel.value = r.product || "";
+    sel.addEventListener("change", ()=>{
+      r.product = sel.value;
+      recalcSummaries();
+      renderOther();
+    });
+    tdP.appendChild(sel);
+    tr.appendChild(tdP);
+
+    const tdPlan = document.createElement("td"); tdPlan.className="num";
+    tdPlan.appendChild(numInput(r.plan, v=>{ r.plan=v; saveDraft(); }));
+    tr.appendChild(tdPlan);
+
+    const tdA = document.createElement("td"); tdA.className="num";
+    tdA.appendChild(numInput(r.actual, v=>{ r.actual=v; recalcSummaries(); renderOther(); }));
+    tr.appendChild(tdA);
+
+    const tdR = document.createElement("td"); tdR.className="num";
+    tdR.textContent = rs(r.revenue || 0);
+    tr.appendChild(tdR);
+
+    const tdDel = document.createElement("td");
+    tdDel.appendChild(delBtn(()=>{ State.otherRows.splice(idx,1); renderOther(); recalcSummaries(); }));
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
+  });
+
+  recalcSummaries();
+}
+
+function renderActivities(){
+  const tbody = $("activityTable").querySelector("tbody");
+  tbody.innerHTML = "";
+
+  State.actRows.forEach((r, idx)=>{
+    const tr = document.createElement("tr");
+
+    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
+
+    const tdT = document.createElement("td");
+    tdT.appendChild(typeSelector(r.typeObj, (v)=>{ r.typeObj=v; saveDraft(); }));
+    tr.appendChild(tdT);
+
+    const tdP = document.createElement("td"); tdP.className="num";
+    tdP.appendChild(numInput(r.planNo, v=>{ r.planNo=v; recalcSummaries(); }));
+    tr.appendChild(tdP);
+
+    const tdA = document.createElement("td"); tdA.className="num";
+    tdA.appendChild(numInput(r.actualNo, v=>{ r.actualNo=v; recalcSummaries(); }));
+    tr.appendChild(tdA);
+
+    const tdN = document.createElement("td"); tdN.className="num";
+    tdN.appendChild(numInput(r.npiNo, v=>{ r.npiNo=v; recalcSummaries(); }));
+    tr.appendChild(tdN);
+
+    const tdDel = document.createElement("td");
+    tdDel.appendChild(delBtn(()=>{ State.actRows.splice(idx,1); renderActivities(); recalcSummaries(); }));
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
+  });
+
+  recalcSummaries();
+}
+
+function renderPhotoRows(){
+  const tbody = $("photoTable").querySelector("tbody");
+  tbody.innerHTML = "";
+
+  State.photoRows.forEach((r, idx)=>{
+    const tr = document.createElement("tr");
+    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
+
+    const tdA = document.createElement("td");
+    const sel = document.createElement("select");
+    setOptions(sel, Master.activityTypes, "Select activity");
+    sel.value = r.activity || "";
+    sel.addEventListener("change", ()=>{ r.activity = sel.value; saveDraft(); renderPhotoPreview(); });
+    tdA.appendChild(sel);
+    tr.appendChild(tdA);
+
+    const tdU = document.createElement("td");
+    const up = document.createElement("input");
+    up.type = "file";
+    up.accept = "image/*";
+    up.addEventListener("change", async (e)=>{
+      const file = e.target.files?.[0];
+      if(!file) return;
+      r.fileName = file.name;
+      r.dataUrl = await compressImage(file);
+      saveDraft();
+      renderPhotoPreview();
+    });
+    tdU.appendChild(up);
+    tr.appendChild(tdU);
+
+    const tdDel = document.createElement("td");
+    tdDel.appendChild(delBtn(()=>{ State.photoRows.splice(idx,1); renderPhotoRows(); renderPhotoPreview(); saveDraft(); }));
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
+  });
+
+  renderPhotoPreview();
+}
+
+function renderPhotoPreview(){
+  const grid = $("photoPreviewGrid");
   grid.innerHTML = "";
-  State.activityPhotos.forEach((p, idx)=>{
+
+  const slice = State.photoRows.filter(p=>p.dataUrl).slice(0, CFG.maxActivityPhotos);
+  slice.forEach((p, idx)=>{
     const card = document.createElement("div");
     card.className = "photo-card";
     card.innerHTML = `
@@ -543,226 +567,277 @@ function renderActivityPhotos(){
       </div>
     `;
     card.querySelector("img").src = p.dataUrl;
-    card.querySelector(".photo-caption").textContent = p.type || "Activity";
-
-    const del = makeDelBtn(()=>{ State.activityPhotos.splice(idx,1); renderActivityPhotos(); saveDraft(); });
+    card.querySelector(".photo-caption").textContent = p.activity || "Activity";
+    const del = delBtn(()=>{
+      // remove the preview row by finding its row index in State.photoRows
+      const realIdx = State.photoRows.findIndex(x=>x.dataUrl===p.dataUrl && x.fileName===p.fileName);
+      if(realIdx >= 0){
+        State.photoRows.splice(realIdx,1);
+        renderPhotoRows();
+        saveDraft();
+      }
+    });
     card.querySelector(".photo-meta").appendChild(del);
-
     grid.appendChild(card);
   });
 }
 
-function renderSpecial(){
-  $("specialDesc").value = State.special.desc || "";
-
-  $("specialPhotoCount").textContent = String(State.special.photos.length);
-  const grid = $("specialPhotoGrid");
-  grid.innerHTML = "";
-  State.special.photos.forEach((p, idx)=>{
-    const card = document.createElement("div");
-    card.className = "photo-card";
-    card.innerHTML = `
-      <img alt="photo"/>
-      <div class="photo-meta">
-        <div class="photo-caption"></div>
-      </div>
-    `;
-    card.querySelector("img").src = p.dataUrl;
-    card.querySelector(".photo-caption").textContent = p.type || "Special";
-
-    const del = makeDelBtn(()=>{ State.special.photos.splice(idx,1); renderSpecial(); saveDraft(); });
-    card.querySelector(".photo-meta").appendChild(del);
-
-    grid.appendChild(card);
-  });
-
-  // table
-  const tbody = $("specialTable").querySelector("tbody");
+function renderNextWeek(){
+  const tbody = $("nextWeekTable").querySelector("tbody");
   tbody.innerHTML = "";
-  State.special.rows.forEach((r, idx)=>{
+
+  State.nwRows.forEach((r, idx)=>{
     const tr = document.createElement("tr");
+
     tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
 
     const tdP = document.createElement("td");
     const sel = document.createElement("select");
     setOptions(sel, Master.allProducts, "Select product");
     sel.value = r.product || "";
-    sel.addEventListener("change", ()=>{ r.product = sel.value; recalcAll(); renderSpecial(); });
+    sel.addEventListener("change", ()=>{
+      r.product = sel.value;
+      recalcSummaries();
+      renderNextWeek();
+    });
     tdP.appendChild(sel);
     tr.appendChild(tdP);
 
-    const tdPl = document.createElement("td"); tdPl.className="num";
-    tdPl.appendChild(numberInput(r.placement, v=>{ r.placement=v; saveDraft(); }));
-    tr.appendChild(tdPl);
+    const tdPlan = document.createElement("td"); tdPlan.className="num";
+    tdPlan.appendChild(numInput(r.plan, v=>{ r.plan=v; saveDraft(); }));
+    tr.appendChild(tdPlan);
 
-    const tdL = document.createElement("td"); tdL.className="num";
-    tdL.appendChild(numberInput(r.liquidation, v=>{ r.liquidation=v; recalcAll(); renderSpecial(); }));
-    tr.appendChild(tdL);
+    const tdA = document.createElement("td"); tdA.className="num";
+    tdA.appendChild(numInput(r.actual, v=>{ r.actual=v; recalcSummaries(); renderNextWeek(); }));
+    tr.appendChild(tdA);
 
-    const tdR = document.createElement("td"); tdR.className="num"; tdR.textContent = moneyINR(r.revenue||0);
+    const tdR = document.createElement("td"); tdR.className="num";
+    tdR.textContent = rs(r.revenue || 0);
     tr.appendChild(tdR);
 
+    const tdI = document.createElement("td"); tdI.className="num";
+    tdI.textContent = rs(r.incentive || 0);
+    tr.appendChild(tdI);
+
     const tdDel = document.createElement("td");
-    tdDel.appendChild(makeDelBtn(()=>{ State.special.rows.splice(idx,1); renderSpecial(); recalcAll(); }));
+    tdDel.appendChild(delBtn(()=>{ State.nwRows.splice(idx,1); renderNextWeek(); recalcSummaries(); }));
     tr.appendChild(tdDel);
 
     tbody.appendChild(tr);
   });
 
-  recalcAll();
+  recalcSummaries();
 }
 
-/* ---------------- Boot & events ---------------- */
+function renderActivityPlan(){
+  const tbody = $("activityPlanTable").querySelector("tbody");
+  tbody.innerHTML = "";
 
-function applyDraftToUI(){
-  $("mdoName").value = State.mdo.name || "";
-  $("headquarter").value = State.mdo.headquarter || "";
-  $("monthSelect").value = State.mdo.month || "";
-  $("weekSelect").value = State.mdo.week || "";
-  $("specialDesc").value = State.special.desc || "";
-}
+  State.apRows.forEach((r, idx)=>{
+    const tr = document.createElement("tr");
 
-function bindMdoDropdowns(){
-  const regions = [...Master.regionToTerritories.keys()].sort((a,b)=>a.localeCompare(b));
-  setOptions($("regionSelect"), regions, "Select region");
+    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
 
-  $("regionSelect").value = State.mdo.region || "";
-  const terrs = Master.regionToTerritories.get($("regionSelect").value) || [];
-  setOptions($("territorySelect"), terrs, "Select territory");
-  $("territorySelect").value = State.mdo.territory || "";
+    const tdT = document.createElement("td");
+    tdT.appendChild(typeSelector(r.typeObj, (v)=>{ r.typeObj=v; saveDraft(); }));
+    tr.appendChild(tdT);
 
-  $("regionSelect").addEventListener("change", ()=>{
-    const t = Master.regionToTerritories.get($("regionSelect").value) || [];
-    setOptions($("territorySelect"), t, "Select territory");
-    $("territorySelect").value = "";
-    saveDraft();
+    const tdP = document.createElement("td"); tdP.className="num";
+    tdP.appendChild(numInput(r.planNo, v=>{ r.planNo=v; saveDraft(); }));
+    tr.appendChild(tdP);
+
+    const tdV = document.createElement("td");
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.placeholder = "Village1, Village2, Village3";
+    inp.value = r.villages || "";
+    inp.addEventListener("input", ()=>{
+      r.villages = inp.value;
+      renderActivityPlan();
+      saveDraft();
+    });
+    tdV.appendChild(inp);
+    tr.appendChild(tdV);
+
+    const tdC = document.createElement("td"); tdC.className="num";
+    const count = String(r.villages||"")
+      .split(",")
+      .map(s=>s.trim())
+      .filter(Boolean).length;
+    r.villageNo = count;
+    tdC.textContent = String(count);
+    tr.appendChild(tdC);
+
+    const tdDel = document.createElement("td");
+    tdDel.appendChild(delBtn(()=>{ State.apRows.splice(idx,1); renderActivityPlan(); saveDraft(); }));
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
   });
-  $("territorySelect").addEventListener("change", saveDraft);
 }
 
-function bindStaticDropdowns(){
-  setOptions($("monthSelect"), CFG.months, "Select month");
-  setOptions($("weekSelect"), CFG.weeks, "Select week");
-  setOptions($("photoTypeSelect"), CFG.activityTypes, "Select activity type");
-  setOptions($("specialPhotoTypeSelect"), CFG.activityTypes, "Select activity type");
+function renderSpecialPhotos(){
+  const tbody = $("spPhotoTable").querySelector("tbody");
+  tbody.innerHTML = "";
+
+  State.spPhotoRows.forEach((r, idx)=>{
+    const tr = document.createElement("tr");
+    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
+
+    const tdA = document.createElement("td");
+    const sel = document.createElement("select");
+    setOptions(sel, Master.activityTypes, "Select activity");
+    sel.value = r.activity || "";
+    sel.addEventListener("change", ()=>{ r.activity = sel.value; saveDraft(); renderSpecialPreview(); });
+    tdA.appendChild(sel);
+    tr.appendChild(tdA);
+
+    const tdU = document.createElement("td");
+    const up = document.createElement("input");
+    up.type = "file";
+    up.accept = "image/*";
+    up.addEventListener("change", async (e)=>{
+      const file = e.target.files?.[0];
+      if(!file) return;
+      r.fileName = file.name;
+      r.dataUrl = await compressImage(file);
+      saveDraft();
+      renderSpecialPreview();
+    });
+    tdU.appendChild(up);
+    tr.appendChild(tdU);
+
+    const tdDel = document.createElement("td");
+    tdDel.appendChild(delBtn(()=>{ State.spPhotoRows.splice(idx,1); renderSpecialPhotos(); renderSpecialPreview(); saveDraft(); }));
+    tr.appendChild(tdDel);
+
+    tbody.appendChild(tr);
+  });
+
+  renderSpecialPreview();
 }
+
+function renderSpecialPreview(){
+  const grid = $("spPhotoPreviewGrid");
+  grid.innerHTML = "";
+
+  const slice = State.spPhotoRows.filter(p=>p.dataUrl).slice(0, CFG.maxSpecialPhotos);
+  slice.forEach((p)=>{
+    const card = document.createElement("div");
+    card.className = "photo-card";
+    card.innerHTML = `
+      <img alt="photo"/>
+      <div class="photo-meta">
+        <div class="photo-caption"></div>
+      </div>
+    `;
+    card.querySelector("img").src = p.dataUrl;
+    card.querySelector(".photo-caption").textContent = p.activity || "Special";
+    grid.appendChild(card);
+  });
+}
+
+/* ---------------- Buttons ---------------- */
 
 function wireButtons(){
-  $("btnSave").addEventListener("click", saveDraft);
   $("btnClearAll").addEventListener("click", clearAll);
 
-  $("npiAdd").addEventListener("click", ()=>{ State.npiRows.push({product:"",plan:"",ach:"",revenue:0,incentiveEarned:0}); renderNpiTable(); });
-  $("npiClear").addEventListener("click", ()=>{ State.npiRows=[]; renderNpiTable(); });
+  // NPI
+  $("npiAdd").addEventListener("click", ()=>{ State.npiRows.push({product:"", plan:"", actual:"", incentiveEarned:0}); renderNpi(); });
+  $("npiClear").addEventListener("click", ()=>{ State.npiRows = []; renderNpi(); });
 
-  $("otherAdd").addEventListener("click", ()=>{ State.otherRows.push({product:"",plan:"",ach:"",revenue:0}); renderOtherTable(); });
-  $("otherClear").addEventListener("click", ()=>{ State.otherRows=[]; renderOtherTable(); });
+  // Other products
+  $("otherAdd").addEventListener("click", ()=>{ State.otherRows.push({product:"", plan:"", actual:"", revenue:0}); renderOther(); });
+  $("otherClear").addEventListener("click", ()=>{ State.otherRows = []; renderOther(); });
 
-  $("actAdd").addEventListener("click", ()=>{ State.activityRows.push({typeObj:{mode:"preset",value:""},planned:"",achieved:"",npiFocused:""}); renderActivityTable(); });
-  $("actClear").addEventListener("click", ()=>{ State.activityRows=[]; renderActivityTable(); });
+  // Activities update
+  $("actAdd").addEventListener("click", ()=>{ State.actRows.push({typeObj:{mode:"preset",value:""}, planNo:"", actualNo:"", npiNo:""}); renderActivities(); });
+  $("actClear").addEventListener("click", ()=>{ State.actRows = []; renderActivities(); });
 
-  $("photoClear").addEventListener("click", ()=>{ State.activityPhotos=[]; renderActivityPhotos(); saveDraft(); });
-
-  $("nwAdd").addEventListener("click", ()=>{ State.nextWeekRows.push({product:"",placement:"",liquidation:"",revenue:0}); renderNextWeekTable(); });
-  $("nwClear").addEventListener("click", ()=>{ State.nextWeekRows=[]; renderNextWeekTable(); });
-
-  $("apAdd").addEventListener("click", ()=>{ State.activityPlanRows.push({typeObj:{mode:"preset",value:""},planned:"",villages:""}); renderActivityPlanTable(); });
-  $("apClear").addEventListener("click", ()=>{ State.activityPlanRows=[]; renderActivityPlanTable(); });
-
-  $("specialAdd").addEventListener("click", ()=>{ if(State.special.rows.length < 5){ State.special.rows.push({product:"",placement:"",liquidation:"",revenue:0}); renderSpecial(); } });
-  $("specialClear").addEventListener("click", ()=>{ State.special.rows=[]; renderSpecial(); });
-
-  $("specialClearAll").addEventListener("click", ()=>{
-    State.special.desc="";
-    State.special.photos=[];
-    State.special.rows=[];
-    renderSpecial();
+  // Activity photos
+  $("photoAdd").addEventListener("click", ()=>{
+    if(State.photoRows.length >= CFG.maxActivityPhotos) return;
+    State.photoRows.push({activity:"", dataUrl:"", fileName:""});
+    renderPhotoRows();
+    saveDraft();
   });
+  $("photoClear").addEventListener("click", ()=>{ State.photoRows = []; renderPhotoRows(); saveDraft(); });
 
-  // basic input saving
-  ["mdoName","headquarter","monthSelect","weekSelect","specialDesc"].forEach(id=>{
-    $(id).addEventListener("input", saveDraft);
-    $(id).addEventListener("change", saveDraft);
+  // Next week
+  $("nwAdd").addEventListener("click", ()=>{ State.nwRows.push({product:"", plan:"", actual:"", revenue:0, incentive:0}); renderNextWeek(); });
+  $("nwClear").addEventListener("click", ()=>{ State.nwRows = []; renderNextWeek(); });
+
+  // Activity plan
+  $("apAdd").addEventListener("click", ()=>{ State.apRows.push({typeObj:{mode:"preset",value:""}, planNo:"", villages:"", villageNo:0}); renderActivityPlan(); });
+  $("apClear").addEventListener("click", ()=>{ State.apRows = []; renderActivityPlan(); });
+
+  // Special
+  $("spDesc").addEventListener("input", saveDraft);
+
+  $("spPhotoAdd").addEventListener("click", ()=>{
+    if(State.spPhotoRows.length >= CFG.maxSpecialPhotos) return;
+    State.spPhotoRows.push({activity:"", dataUrl:"", fileName:""});
+    renderSpecialPhotos();
+    saveDraft();
   });
+  $("spPhotoClear").addEventListener("click", ()=>{ State.spPhotoRows = []; renderSpecialPhotos(); saveDraft(); });
 
-  // custom activity type for photo toolbars
-  function toggleCustom(selectEl, inputEl){
-    if(selectEl.value === "Custom"){
-      inputEl.classList.remove("hidden");
-    }else{
-      inputEl.classList.add("hidden");
-      inputEl.value = "";
-    }
-  }
-  $("photoTypeSelect").addEventListener("change", ()=>toggleCustom($("photoTypeSelect"), $("photoCustomType")));
-  $("specialPhotoTypeSelect").addEventListener("change", ()=>toggleCustom($("specialPhotoTypeSelect"), $("specialPhotoCustomType")));
-
-  // upload activity photos
-  $("photoUpload").addEventListener("change", async (e)=>{
-    const files = [...(e.target.files||[])];
-    let type = $("photoTypeSelect").value || "Activity";
-    if(type === "Custom") type = $("photoCustomType").value || "Custom";
-
-    for(const f of files){
-      if(State.activityPhotos.length >= CFG.limits.activityPhotos) break;
-      const dataUrl = await compressImage(f);
-      State.activityPhotos.push({type, dataUrl});
-    }
-    e.target.value = "";
-    renderActivityPhotos();
+  $("spClearAll").addEventListener("click", ()=>{
+    State.spDesc = "";
+    $("spDesc").value = "";
+    State.spPhotoRows = [];
+    renderSpecialPhotos();
     saveDraft();
   });
 
-  // upload special photos
-  $("specialPhotoUpload").addEventListener("change", async (e)=>{
-    const files = [...(e.target.files||[])];
-    let type = $("specialPhotoTypeSelect").value || "Special";
-    if(type === "Custom") type = $("specialPhotoCustomType").value || "Custom";
-
-    for(const f of files){
-      if(State.special.photos.length >= CFG.limits.specialPhotos) break;
-      const dataUrl = await compressImage(f);
-      State.special.photos.push({type, dataUrl});
-    }
-    e.target.value = "";
-    renderSpecial();
+  // PDF
+  $("btnPdf").addEventListener("click", ()=>{
     saveDraft();
+    window.generateA4Pdf({
+      Master,
+      State: {
+        ...State,
+        mdoName: $("mdoName").value || "",
+        hq: $("hq").value || "",
+        region: $("region").value || "",
+        territory: $("territory").value || "",
+        month: $("month").value || "",
+        week: $("week").value || "",
+        spDesc: $("spDesc").value || ""
+      },
+      typeLabel,
+      rs
+    });
   });
 }
+
+/* ---------------- Boot ---------------- */
 
 async function boot(){
   loadDraft();
-  bindStaticDropdowns();
 
   try{
     await loadMasterExcel();
   }catch(err){
-    hideLoading();
-    showError(err.message);
+    console.error(err);
+    showFatal(`Unable to load master data. Please check <b>${CFG.excelPath}</b> and refresh.`);
     return;
   }
 
-  // fill dropdowns now that master data is loaded
-  bindMdoDropdowns();
-  applyDraftToUI();
+  initMdoDropdowns();
+  applyDraft();
 
-  // render all
-  renderNpiTable();
-  renderOtherTable();
-  renderActivityTable();
-  renderActivityPhotos();
-  renderNextWeekTable();
-  renderActivityPlanTable();
-  renderSpecial();
+  // initial renders
+  renderNpi();
+  renderOther();
+  renderActivities();
+  renderPhotoRows();
+  renderNextWeek();
+  renderActivityPlan();
+  renderSpecialPhotos();
 
-  // PDF hook (pdf.js defines window.generateA4Pdf)
-  $("btnPdf").addEventListener("click", async ()=>{
-    await window.generateA4Pdf({
-      State, Master, CFG,
-      moneyINR, getActivityLabel
-    });
-  });
-
-  hideLoading();
+  wireButtons();
+  recalcSummaries();
 }
 
-boot();
+document.addEventListener("DOMContentLoaded", boot);
