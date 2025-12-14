@@ -4,13 +4,9 @@
   <meta charset="UTF-8"/>
   <title>MDO Weekly Report</title>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-
   <link rel="stylesheet" href="styles.css"/>
 
-  <!-- Excel parser -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
-
-  <!-- PDF -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 </head>
@@ -21,95 +17,129 @@
     <img src="assets/logo/logo.png" class="logo"/>
     <div>
       <div class="brandTitle">MDO Weekly Report</div>
-      <div class="brandSub">Auto-loaded master data</div>
+      <div class="brandSub">Master data auto-loaded</div>
     </div>
   </div>
-
-  <div class="barActions">
-    <button id="btnPdf" class="btn btn-primary">Generate A4 PDF</button>
-  </div>
+  <button id="btnPdf" class="btn btn-primary">Generate A4 PDF</button>
 </header>
 
 <main class="container">
 
-  <!-- MDO DETAILS -->
-  <section class="card">
-    <h2>1) MDO Details</h2>
-    <div class="formGrid">
-      <input id="mdoName" placeholder="MDO Name"/>
-      <input id="headquarter" placeholder="Headquarter"/>
-      <select id="region"></select>
-      <select id="territory"></select>
-      <select id="month"></select>
-      <select id="week"></select>
-    </div>
-  </section>
+<!-- SECTION 1 -->
+<section class="card">
+<h2>1) MDO Details</h2>
+<div class="formGrid">
+<input id="mdoName" placeholder="MDO Name"/>
+<input id="headquarter" placeholder="Headquarter"/>
+<select id="region"></select>
+<select id="territory"></select>
+<select id="month"></select>
+<select id="week"></select>
+</div>
+</section>
 
-  <!-- NPI PERFORMANCE -->
-  <section class="card">
-    <div class="sectionHead">
-      <h2>2) NPI Performance</h2>
-      <div>
-        <button onclick="addNpiRow()" class="btn btn-outline">Add Row</button>
-        <button onclick="clearNpi()" class="btn btn-outline danger">Clear</button>
-      </div>
-    </div>
+<!-- SECTION 2 -->
+<section class="card">
+<h2>2) NPI Performance</h2>
+<button onclick="addNpi()">Add Row</button>
+<button onclick="clearNpi()">Clear</button>
 
-    <table class="table" id="npiTable">
-      <thead>
-      <tr>
-        <th>#</th>
-        <th>Product (NPI)</th>
-        <th>Plan</th>
-        <th>Achievement</th>
-        <th>Total Revenue (₹)</th>
-        <th>Incentive Earned (₹)</th>
-        <th></th>
-      </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+<table id="npiTable" class="table">
+<thead>
+<tr>
+<th>#</th><th>Product</th><th>Plan</th><th>Achievement</th>
+<th>Total Revenue (₹)</th><th>Incentive Earned (₹)</th><th></th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
 
-    <div class="npiSummary">
-      <div class="npiMetric">
-        <span>Total Incentive Earned</span>
-        <strong id="npiIncentive">₹ 0</strong>
-      </div>
-      <div class="npiMetric">
-        <span>Total Revenue Generated</span>
-        <strong id="npiRevenue">₹ 0</strong>
-      </div>
-    </div>
-  </section>
+<div class="npiSummary">
+<div>Total Incentive Earned: <b id="npiInc">₹ 0</b></div>
+<div>Total Revenue Generated: <b id="npiRev">₹ 0</b></div>
+</div>
+</section>
 
-  <!-- OTHER PRODUCTS -->
-  <section class="card">
-    <div class="sectionHead">
-      <h2>3) Other Product Performance</h2>
-      <div>
-        <button onclick="addOtherRow()" class="btn btn-outline">Add Row</button>
-        <button onclick="clearOther()" class="btn btn-outline danger">Clear</button>
-      </div>
-    </div>
+<!-- SECTION 3 -->
+<section class="card">
+<h2>3) Other Product Performance</h2>
+<button onclick="addOther()">Add Row</button>
+<button onclick="clearOther()">Clear</button>
 
-    <table class="table" id="otherTable">
-      <thead>
-      <tr>
-        <th>#</th>
-        <th>Product</th>
-        <th>Plan</th>
-        <th>Achievement</th>
-        <th>Total Revenue (₹)</th>
-        <th></th>
-      </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+<table id="otherTable" class="table">
+<thead>
+<tr>
+<th>#</th><th>Product</th><th>Plan</th><th>Achievement</th>
+<th>Total Revenue (₹)</th><th></th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
 
-    <div class="plainSummary">
-      Total Revenue: <strong id="otherRevenue">₹ 0</strong>
-    </div>
-  </section>
+<div>Total Revenue: <b id="otherRev">₹ 0</b></div>
+</section>
+
+<!-- SECTION 4 -->
+<section class="card">
+<h2>4) Activity Status</h2>
+<button onclick="addActivity()">Add Row</button>
+<button onclick="clearActivity()">Clear</button>
+
+<table id="activityTable" class="table">
+<thead>
+<tr>
+<th>#</th><th>Activity</th><th>Planned</th><th>Achieved</th><th>NPI Focused</th><th></th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<div class="summary">
+Planned: <b id="actP">0</b> |
+Achieved: <b id="actA">0</b> |
+NPI Focused: <b id="actN">0</b>
+</div>
+</section>
+
+<!-- SECTION 5 -->
+<section class="card">
+<h2>5) Next Week Product Plan</h2>
+<button onclick="addNext()">Add Row</button>
+<button onclick="clearNext()">Clear</button>
+
+<table id="nextTable" class="table">
+<thead>
+<tr>
+<th>#</th><th>Product</th><th>Placement</th><th>Liquidation</th>
+<th>Total Revenue (₹)</th><th></th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<div>Total Revenue: <b id="nextRev">₹ 0</b></div>
+</section>
+
+<!-- SECTION 6 -->
+<section class="card">
+<h2>6) Special Achievement</h2>
+<textarea id="specialDesc" placeholder="Describe special achievement"></textarea>
+
+<button onclick="addSpecial()">Add Row</button>
+<button onclick="clearSpecial()">Clear</button>
+
+<table id="specialTable" class="table">
+<thead>
+<tr>
+<th>#</th><th>Product</th><th>Placement</th><th>Liquidation</th>
+<th>Total Revenue (₹)</th><th></th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<div>Total Revenue: <b id="specialRev">₹ 0</b></div>
+</section>
 
 </main>
 
