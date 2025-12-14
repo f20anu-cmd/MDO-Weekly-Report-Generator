@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MDO Weekly Report</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<h2>MDO Weekly Performance Report</h2>
+
+<section>
+<h3>MDO Details</h3>
+<input id="mdoName" placeholder="MDO Name">
+<input id="region" placeholder="Region">
+<input id="territory" placeholder="Territory">
+<input id="hq" placeholder="HQ">
+<select id="month">
+<option>January</option><option>February</option><option>March</option>
+<option>April</option><option>May</option><option>June</option>
+<option>July</option><option>August</option><option>September</option>
+<option>October</option><option>November</option><option>December</option>
+</select>
+<select id="week">
+<option>Week1</option><option>Week2</option><option>Week3</option><option>Week4</option>
+</select>
+</section>
+
+<hr>
+
+<section>
+<h3>Upload Master Excel</h3>
+<input type="file" id="excelInput" accept=".xlsx">
+</section>
+
+<hr>
+
+<section>
+<h3>NPI Performance</h3>
+<table id="npiTable">
+<thead>
+<tr>
+<th>Product</th>
+<th>Plan (Lt/Kg)</th>
+<th>Achievement (Lt/Kg)</th>
+<th>Incentive (₹)</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+<button onclick="addNPIRow()">➕ Add NPI Product</button>
+</section>
+
+<hr>
+
+<section>
+<h3>Product Performance</h3>
+<table id="productTable">
+<thead>
+<tr>
+<th>Product</th>
+<th>Plan (Lt/Kg)</th>
+<th>Achievement (Lt/Kg)</th>
+<th>Revenue (₹)</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+<button onclick="addProductRow()">➕ Add Product</button>
+</section>
+
+<hr>
+
+<section>
+<h3>Activity Photos (Max 20)</h3>
+<input type="file" id="photoInput" accept="image/*" multiple>
+</section>
+
+<hr>
+
+<button class="generate" onclick="generatePDF()">Generate PDF</button>
+
+<script src="app.js"></script>
+</body>
+</html>
