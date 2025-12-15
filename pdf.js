@@ -71,42 +71,64 @@ function formatRs(value){
     return doc.lastAutoTable.finalY + 8;
   }
 
-  function addPhotos(doc, title, photos, y, pageState){
-    y = sectionTitle(doc, title, y, pageState);
+ function addPhotos(doc, title, photos, y, pageState){
+  y = sectionTitle(doc, title, y, pageState);
 
-    if(!photos.length){
-      y = ensureSpace(doc, y, 10, pageState);
-      doc.setFontSize(9);
-      doc.text("No photos uploaded.", 15, y);
-      return y + 12;
-    }
-
-    const imgW = 80, imgH = 55, gapX = 10, gapY = 22;
-    let x = 15, col = 0;
-
-    for(const p of photos){
-      y = ensureSpace(doc, y, imgH + gapY, pageState);
-
-      try{
-        doc.addImage(p.dataUrl, "JPEG", x, y, imgW, imgH);
-      }catch{}
-
-      doc.setFontSize(9);
-      doc.setFont("helvetica","bold");
-      doc.text(p.activity || "Activity", x, y + imgH + 6);
-      doc.setFont("helvetica","normal");
-
-      col++;
-      if(col === 2){
-        col = 0;
-        x = 15;
-        y += imgH + gapY;
-      }else{
-        x += imgW + gapX;
-      }
-    }
-    return y + 10;
+  if(!photos.length){
+    y = ensureSpace(doc, y, 10, pageState);
+    doc.setFontSize(9);
+    doc.text("No photos uploaded.", 15, y);
+    return y + 12;
   }
+
+  const x0 = 15;
+  const imgW = 80;
+  const imgH = 55;
+  const gapX = 10;
+  const gapY = 22;
+
+  let x = x0;
+  let col = 0;
+
+  for(const p of photos){
+    y = ensureSpace(doc, y, imgH + gapY, pageState);
+
+    try{
+      doc.addImage(p.dataUrl, "JPEG", x, y, imgW, imgH);
+    }catch(e){
+      // ignore invalid images
+    }
+
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(9);
+    doc.setTextColor(90);
+    doc.text(String(p.activity || "Activity"), x, y + imgH + 6);
+    doc.setTextColor(0);
+    doc.setFont("helvetica","normal");
+
+    col++;
+
+    if(col === 2){
+      // completed a full row
+      col = 0;
+      x = x0;
+      y += imgH + gapY;
+    }else{
+      // move to second column
+      x += imgW + gapX;
+    }
+  }
+
+  // ✅ CRITICAL FIX:
+  // If the last row had only ONE image, move Y down
+  if(col === 1){
+    y += imgH + gapY;
+  }
+
+  // extra breathing room before next section
+  return y + 6;
+}
+
 
   window.generatePerformancePdf = function(payload, Master){
     const doc = new jsPDF({unit:"mm", format:"a4"});
