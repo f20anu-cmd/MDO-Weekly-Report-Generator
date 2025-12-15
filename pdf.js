@@ -71,47 +71,56 @@
     return y + 18;
   }
 
+  // ✅ FIXED photo flow: no overlap with next section
   function addPhotosFlow(doc, title, photos, y, pageNo){
     if(!photos.length){
-      ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+      ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
       y = sectionTitle(doc, title, y);
       doc.setFontSize(10);
       doc.text("No photos uploaded.", 15, y+6);
-      return { y: y+18, pageNo };
+      return { y: y+20, pageNo };
     }
 
-    ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 24));
     y = sectionTitle(doc, title, y);
+    y += 6;
 
-    const x0=15, w=86, h=58, gapX=8, gapY=16;
-    let x=x0, col=0;
+    const xStart = 15;
+    const imgW = 80;
+    const imgH = 55;
+    const gapX = 10;
+    const gapY = 22;
 
-    // start photos a bit below title
-    y += 2;
+    let x = xStart;
+    let col = 0;
 
-    for(const p of photos){
-      // ensure enough space for one photo block
-      ({y, pageNo} = ensureSpace(doc, y, pageNo, h + 14));
+    for (let i = 0; i < photos.length; i++) {
+      const p = photos[i];
 
-      try{ doc.addImage(p.dataUrl, "JPEG", x, y, w, h); }catch(e){}
+      ({y, pageNo} = ensureSpace(doc, y, pageNo, imgH + 18));
 
-      doc.setFont("helvetica","bold");
+      try { doc.addImage(p.dataUrl, "JPEG", x, y, imgW, imgH); } catch(e){}
+
       doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
       doc.setTextColor(90);
-      doc.text((p.activity || "Activity").toString(), x, y+h+6);
+      doc.text((p.activity || "Activity"), x, y + imgH + 6);
       doc.setTextColor(0);
-      doc.setFont("helvetica","normal");
+      doc.setFont("helvetica", "normal");
 
       col++;
-      if(col===2){
-        col=0; x=x0; y += h + gapY;
-      }else{
-        x += w + gapX;
+
+      if (col === 2) {
+        col = 0;
+        x = xStart;
+        y += imgH + gapY;
+      } else {
+        x += imgW + gapX;
       }
     }
 
-    // reset x and move y a bit
-    y += 8;
+    // reserve extra space after last row
+    y += imgH + 12;
     return { y, pageNo };
   }
 
@@ -126,12 +135,11 @@
 
     let y = 28;
 
-    // 1) MDO Details
+    // 1) MDO Information
     ({y, pageNo} = ensureSpace(doc, y, pageNo, 30));
     y = sectionTitle(doc, "1) MDO Information", y);
 
     doc.setFontSize(10);
-    doc.setFont("helvetica","normal");
     const items = [
       ["Name", State.mdoName || ""],
       ["HQ", State.hq || ""],
@@ -150,32 +158,37 @@
     }
     y += 4;
 
-    // 2) NPI
+    // 2) NPI Performance Update
     ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
     y = sectionTitle(doc, "2) NPI Performance Update", y);
 
-    let npiTotal = 0;
+    let oppTotal = 0, earnedTotal = 0;
     const npiBody = (State.npiRows||[]).map((r,i)=>{
-      npiTotal += (r.incentiveEarned || 0);
+      oppTotal += (r.opportunity || 0);
+      earnedTotal += (r.earned || 0);
       return [
         String(i+1),
         r.product || "",
         String(r.plan || ""),
         String(r.actual || ""),
-        `${rs(r.incentiveEarned||0)} Rs`
+        `${rs(r.opportunity||0)} Rs`,
+        `${rs(r.earned||0)} Rs`
       ];
     });
 
     y = autoTable(doc,
-      ["#", "Product", "Plan (L/Kg)", "Actual (L/Kg)", "Total Incentive Earned"],
+      ["#", "Product", "Plan (L/Kg)", "Actual (L/Kg)", "Incentive Opportunity", "Incentive Earned"],
       npiBody,
       y
     );
 
+    const lose = Math.max(0, oppTotal - earnedTotal);
     ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
-    y = drawHighlight(doc, y, "Congratulations you have earned", `${rs(npiTotal)} Rs !!!`);
+    y = drawHighlight(doc, y, "Congratulations you have earned", `${rs(earnedTotal)} Rs !!!`);
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+    y = drawHighlight(doc, y, "You lose", `${rs(lose)} Rs`);
 
-    // 3) Other products
+    // 3) Other Product Performance
     ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
     y = sectionTitle(doc, "3) Other Product Performance Update", y);
 
@@ -231,25 +244,25 @@
     doc.setFont("helvetica","normal");
     y += 10;
 
-    // 5) Activities Photos (flow, adds new pages only if needed)
+    // 5) Activities Photos
     const actPhotos = (State.photoRows||[]).filter(p=>p.dataUrl).slice(0,16);
     ({y, pageNo} = addPhotosFlow(doc, "5) Activities Photos", actPhotos, y, pageNo));
 
-    // 6) Next Week Plan
+    // 6) Next Week Plan - Product Plan
     ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
     y = sectionTitle(doc, "6) Next Week Plan - Product Plan", y);
 
-    let nwRev=0, nwInc=0;
+    let nwRev=0, nwOpp=0;
     const nwBody = (State.nwRows||[]).map((r,i)=>{
       nwRev += (r.revenue||0);
-      nwInc += (r.incentive||0);
+      nwOpp += (r.incentiveEarned||0);
       return [
         String(i+1),
         r.product || "",
         String(r.plan || ""),
         String(r.actual || ""),
         `${rs(r.revenue||0)} Rs`,
-        `${rs(r.incentive||0)} Rs`
+        `${rs(r.incentiveEarned||0)} Rs`
       ];
     });
 
@@ -259,10 +272,10 @@
       y
     );
 
-    ({y, pageNo} = ensureSpace(doc, y, pageNo, 36));
-    y = drawHighlight(doc, y, "TOTAL REVENUE", `${rs(nwRev)} Rs`);
     ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
-    y = drawHighlight(doc, y, "Your next week incentive opportunity is", `${rs(nwInc)} Rs !!!`);
+    y = drawHighlight(doc, y, "Your next week incentive opportunity is", `${rs(nwOpp)} Rs !!!`);
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+    y = drawHighlight(doc, y, "TOTAL REVENUE", `${rs(nwRev)} Rs`);
 
     // 7) Activities Plan
     ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
@@ -302,7 +315,6 @@
     doc.text(wrapped, 15, y);
     y += (wrapped.length * 5) + 6;
 
-    // Special photos (up to 4)
     const spPhotos = (State.spPhotoRows||[]).filter(p=>p.dataUrl).slice(0,4);
     ({y, pageNo} = addPhotosFlow(doc, "Special Achievement Photos", spPhotos, y, pageNo));
 
