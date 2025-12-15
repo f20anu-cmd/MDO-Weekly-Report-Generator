@@ -1,79 +1,91 @@
-/* ===========================
-   Performance Report - app.js
-   - Dropdowns from data/master_data.xlsx (admin excel)
-   - All buttons wired after DOM ready
-   - Cursor stable: commit on BLUR (no render on every keystroke)
-   - No server storage
-=========================== */
+/* Complete app.js (no partials)
+   - Loads dropdowns from data/master_data.xlsx
+   - Buttons always wired even if excel load fails
+   - No cursor jump while typing (no rerender on each keystroke)
+   - Full sections + photos + next week plan + activity plan + special achievement
+*/
 
 const $ = (id) => document.getElementById(id);
 
 const CFG = {
   excelPath: "data/master_data.xlsx",
-  months: ["January","February","March","April","May","June","July","August","September","October","November","December"],
-  weeks: ["1","2","3","4","5"],
   maxNpiRows: 9,
   maxOtherRows: 10,
   maxNextWeekRows: 10,
-  maxActivityPhotos: 16,
-  maxSpecialPhotos: 4
+  maxActPhotos: 16,
+  maxSpPhotos: 4,
+  months: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+  weeks: ["1","2","3","4","5"]
 };
 
 const Master = {
   regionToTerritories: new Map(),
   npiProducts: [],
-  npiMeta: new Map(),        // product -> { realised, incentiveRate }
   otherProducts: [],
-  productMeta: new Map(),    // product -> { realised, category }
+  allProducts: [],
   activityTypes: [],
-  allProducts: []
+  // product -> { realised, category }
+  productMeta: new Map(),
+  // product -> { realised, incentiveRate }
+  npiMeta: new Map()
 };
 
 const State = {
-  mdoName: "",
-  hq: "",
-  region: "",
-  territory: "",
-  month: "",
-  week: "",
-
-  // 2) NPI
-  npiRows: [],      // {product, plan, actual, opportunity, earned}
-
-  // 3) Other products
-  otherRows: [],    // {product, plan, actual, revenue}
-
-  // 4) Activities update
-  actRows: [],      // {typeObj, planNo, actualNo, npiNo}
-
-  // 5) Activities photos
-  photoRows: [],    // {activity, dataUrl, fileName}
-
-  // 6) Next week plan
-  nwRows: [],       // {product, plan, actual, revenue, incentiveEarned}
-
-  // 7) Activities plan
-  apRows: [],       // {typeObj, planNo, villages, villageNo}
-
-  // 8) Special
+  npiRows: [],
+  otherRows: [],
+  activityRows: [],
+  photoRows: [],
+  nextWeekRows: [],
+  actPlanRows: [],
   spDesc: "",
-  spPhotoRows: []   // {activity, dataUrl, fileName}
+  spPhotoRows: []
 };
 
-function toNum(x){
-  if (x === null || x === undefined) return 0;
-  const s = String(x).replace(/,/g,"").trim();
-  const n = Number(s);
-  return Number.isFinite(n) ? n : 0;
-}
 function rs(n){
-  return Math.round(Number(n||0)).toLocaleString("en-IN");
+  const v = Math.round(Number(n || 0));
+  return v.toLocaleString("en-IN");
 }
-function showFatal(msg){
-  $("fatalError").classList.remove("hidden");
-  $("fatalError").innerHTML = msg || "Error";
+function toNum(v){
+  if (v === null || v === undefined) return 0;
+  const x = Number(String(v).replace(/,/g,"").trim());
+  return Number.isFinite(x) ? x : 0;
 }
 
+function setOptions(selectEl, values, placeholder){
+  selectEl.innerHTML = "";
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = placeholder || "Select";
+  selectEl.appendChild(ph);
+  for(const v of values){
+    const op = document.createElement("option");
+    op.value = v;
+    op.textContent = v;
+    selectEl.appendChild(op);
+  }
+}
+
+function setStatus(kind, text){
+  const el = $("masterStatus");
+  el.classList.remove("pill--ok","pill--warn","pill--loading");
+  if(kind === "ok") el.classList.add("pill--ok");
+  else if(kind === "warn") el.classList.add("pill--warn");
+  else el.classList.add("pill--loading");
+  el.textContent = text;
+}
+
+function showFatal(msg){
+  const el = $("fatal");
+  el.classList.remove("hidden");
+  el.innerHTML = msg;
+}
+
+function clearFatal(){
+  $("fatal").classList.add("hidden");
+  $("fatal").textContent = "";
+}
+
+/* ---------- Excel load ---------- */
 function safeSheet(wb, ...names){
   for(const n of names){
     if(wb.Sheets[n]) return wb.Sheets[n];
@@ -81,20 +93,100 @@ function safeSheet(wb, ...names){
   return null;
 }
 
-function setOptions(sel, arr, placeholder){
-  sel.innerHTML = "";
-  const ph = document.createElement("option");
-  ph.value = "";
-  ph.textContent = placeholder || "Select";
-  sel.appendChild(ph);
-  for(const v of arr){
-    const op = document.createElement("option");
-    op.value = v;
-    op.textContent = v;
-    sel.appendChild(op);
+async function loadMasterExcel(){
+  const res = await fetch(CFG.excelPath, { cache: "no-store" });
+  if(!res.ok) throw new Error(`Cannot load ${CFG.excelPath}`);
+
+  const wb = XLSX.read(await res.arrayBuffer(), { type: "array" });
+
+  const sRM = safeSheet(wb, "Region Mapping");
+  const sNPI = safeSheet(wb, "NPI sheet", "NPI Sheet");
+  const sPL  = safeSheet(wb, "Product List");
+  const sAL  = safeSheet(wb, "Activity List");
+
+  if(!sRM || !sNPI || !sPL || !sAL){
+    throw new Error("Missing one or more required sheets in master_data.xlsx");
   }
+
+  const rm = XLSX.utils.sheet_to_json(sRM, { defval: "" });
+  const npi = XLSX.utils.sheet_to_json(sNPI, { defval: "" });
+  const pl  = XLSX.utils.sheet_to_json(sPL,  { defval: "" });
+  const al  = XLSX.utils.sheet_to_json(sAL,  { defval: "" });
+
+  // Region mapping: Region -> Territtory (spelling preserved)
+  const map = new Map();
+  for(const r of rm){
+    const region = String(r["Region"] || "").trim();
+    const terr = String(r["Territtory"] || "").trim();
+    if(!region || !terr) continue;
+    if(!map.has(region)) map.set(region, []);
+    map.get(region).push(terr);
+  }
+  for(const [k,v] of map){
+    map.set(k, [...new Set(v)].sort((a,b)=>a.localeCompare(b)));
+  }
+  Master.regionToTerritories = map;
+
+  // NPI meta
+  const npiMeta = new Map();
+  for(const r of npi){
+    const product = String(r["Product"] || "").trim();
+    if(!product) continue;
+    const realised = toNum(r["Realised Value in Rs"]);
+    const incentiveRate = toNum(r["Incentive"]);
+    npiMeta.set(product, { realised, incentiveRate });
+  }
+  Master.npiMeta = npiMeta;
+  Master.npiProducts = [...npiMeta.keys()].sort((a,b)=>a.localeCompare(b));
+
+  // Product list meta
+  const pMeta = new Map();
+  for(const r of pl){
+    const product = String(r["Product"] || "").trim();
+    if(!product) continue;
+    const realised = toNum(r["Realised Value"]);
+    const category = String(r["Category"] || "").trim();
+    pMeta.set(product, { realised, category });
+  }
+  Master.productMeta = pMeta;
+
+  // Other products: category != NPI and not in NPI sheet
+  const other = [];
+  for(const [p, meta] of pMeta.entries()){
+    const cat = (meta.category || "").toLowerCase();
+    if(cat !== "npi" && !Master.npiMeta.has(p)) other.push(p);
+  }
+  Master.otherProducts = [...new Set(other)].sort((a,b)=>a.localeCompare(b));
+
+  // All products for next week (union)
+  const allSet = new Set([...Master.npiProducts, ...[...pMeta.keys()]]);
+  Master.allProducts = [...allSet].sort((a,b)=>a.localeCompare(b));
+
+  // Activity types
+  const acts = [];
+  for(const r of al){
+    const a = String(r["Activity Type"] || "").trim();
+    if(a) acts.push(a);
+  }
+  Master.activityTypes = [...new Set(acts)];
 }
 
+/* ---------- Init dropdowns ---------- */
+function initHeaderDropdowns(){
+  setOptions($("month"), CFG.months, "Select Month");
+  setOptions($("week"), CFG.weeks, "Select Week");
+
+  const regions = [...Master.regionToTerritories.keys()].sort((a,b)=>a.localeCompare(b));
+  setOptions($("region"), regions, "Select Region");
+  setOptions($("territory"), [], "Select Territory");
+
+  $("region").addEventListener("change", ()=>{
+    const terrs = Master.regionToTerritories.get($("region").value) || [];
+    setOptions($("territory"), terrs, "Select Territory");
+  });
+}
+
+/* ---------- Photos (compression) ---------- */
 async function compressImage(file, maxW=1400, quality=0.78){
   const bmp = await createImageBitmap(file);
   const ratio = Math.min(1, maxW / bmp.width);
@@ -108,217 +200,79 @@ async function compressImage(file, maxW=1400, quality=0.78){
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-/* Activity selector: DD + Custom */
-function typeSelector(typeObj, onChange){
-  const wrap = document.createElement("div");
-  wrap.style.display = "grid";
-  wrap.style.gap = "6px";
-
-  const sel = document.createElement("select");
-  const custom = document.createElement("input");
-  custom.type = "text";
-  custom.placeholder = "Custom activity";
-  custom.style.display = "none";
-
-  setOptions(sel, Master.activityTypes, "Select activity");
-  const optC = document.createElement("option");
-  optC.value = "__CUSTOM__";
-  optC.textContent = "Custom";
-  sel.appendChild(optC);
-
-  if(typeObj?.mode === "custom"){
-    sel.value = "__CUSTOM__";
-    custom.style.display = "block";
-    custom.value = typeObj.value || "";
-  } else {
-    sel.value = typeObj?.value || "";
-  }
-
-  sel.addEventListener("change", ()=>{
-    if(sel.value === "__CUSTOM__"){
-      custom.style.display = "block";
-      onChange({mode:"custom", value: custom.value || ""});
-    }else{
-      custom.style.display = "none";
-      custom.value = "";
-      onChange({mode:"preset", value: sel.value});
-    }
-  });
-
-  custom.addEventListener("input", ()=>{
-    onChange({mode:"custom", value: custom.value || ""});
-  });
-
-  wrap.appendChild(sel);
-  wrap.appendChild(custom);
-  return wrap;
-}
-function typeLabel(obj){
-  if(!obj) return "";
-  return obj.mode === "custom" ? (obj.value || "Custom") : (obj.value || "");
+/* ---------- DOM helpers (stable inputs) ---------- */
+function makeNumberInput(initial, onInput){
+  const el = document.createElement("input");
+  el.type = "number";
+  el.min = "0";
+  el.step = "any";
+  el.value = (initial ?? "");
+  el.addEventListener("input", ()=> onInput(el.value)); // no rerender
+  return el;
 }
 
-function delBtn(onClick){
+function makeTextInput(initial, onInput, placeholder=""){
+  const el = document.createElement("input");
+  el.type = "text";
+  el.placeholder = placeholder;
+  el.value = (initial ?? "");
+  el.addEventListener("input", ()=> onInput(el.value));
+  return el;
+}
+
+function makeSelect(options, initial, onChange, placeholder="Select"){
+  const el = document.createElement("select");
+  setOptions(el, options, placeholder);
+  el.value = initial || "";
+  el.addEventListener("change", ()=> onChange(el.value));
+  return el;
+}
+
+function makeDelButton(onClick){
   const b = document.createElement("button");
-  b.className = "iconbtn";
-  b.textContent = "✕";
-  b.title = "Remove";
+  b.className = "icon";
   b.type = "button";
+  b.textContent = "✕";
   b.addEventListener("click", onClick);
   return b;
 }
 
-/* Cursor-stable numeric input: commit on BLUR */
-function numInput(value, onCommit){
-  const i = document.createElement("input");
-  i.type = "number";
-  i.min = "0";
-  i.step = "any";
-  i.value = value ?? "";
-  i.addEventListener("blur", ()=> onCommit(i.value));
-  return i;
-}
-
-/* ---------- Load admin excel ---------- */
-async function loadMasterExcel(){
-  if(typeof XLSX === "undefined"){
-    throw new Error("XLSX library failed to load.");
-  }
-  const res = await fetch(CFG.excelPath, {cache:"no-store"});
-  if(!res.ok){
-    throw new Error(`Cannot load ${CFG.excelPath}.`);
-  }
-  const wb = XLSX.read(await res.arrayBuffer(), {type:"array"});
-
-  const sRM = safeSheet(wb, "Region Mapping");
-  const sNPI = safeSheet(wb, "NPI sheet", "NPI Sheet");
-  const sPL  = safeSheet(wb, "Product List");
-  const sAL  = safeSheet(wb, "Activity List");
-
-  if(!sRM) throw new Error(`Missing sheet: Region Mapping`);
-  if(!sNPI) throw new Error(`Missing sheet: NPI sheet / NPI Sheet`);
-  if(!sPL) throw new Error(`Missing sheet: Product List`);
-  if(!sAL) throw new Error(`Missing sheet: Activity List`);
-
-  const rm = XLSX.utils.sheet_to_json(sRM, {defval:""});
-  const npi = XLSX.utils.sheet_to_json(sNPI, {defval:""});
-  const pl  = XLSX.utils.sheet_to_json(sPL, {defval:""});
-  const al  = XLSX.utils.sheet_to_json(sAL, {defval:""});
-
-  // Region -> Territory mapping (column "Territtory" spelling preserved)
-  const rmap = new Map();
-  for(const r of rm){
-    const region = String(r["Region"]||"").trim();
-    const terr = String(r["Territtory"]||"").trim();
-    if(!region || !terr) continue;
-    if(!rmap.has(region)) rmap.set(region, []);
-    rmap.get(region).push(terr);
-  }
-  for(const [k,v] of rmap){
-    rmap.set(k, [...new Set(v)].sort((a,b)=>a.localeCompare(b)));
-  }
-  Master.regionToTerritories = rmap;
-
-  // NPI meta
-  const npiMeta = new Map();
-  for(const r of npi){
-    const product = String(r["Product"]||"").trim();
-    if(!product) continue;
-
-    const realised = toNum(r["Realised Value in Rs"]);
-    const incentiveRate = toNum(r["Incentive"]); // rate per L/Kg
-
-    npiMeta.set(product, { realised, incentiveRate });
-  }
-  Master.npiMeta = npiMeta;
-  Master.npiProducts = [...npiMeta.keys()].sort((a,b)=>a.localeCompare(b));
-
-  // Product list meta + otherProducts
-  const pMeta = new Map();
-  const otherProducts = [];
-  const allProductsSet = new Set(Master.npiProducts);
-
-  for(const r of pl){
-    const product = String(r["Product"]||"").trim();
-    if(!product) continue;
-    const realised = toNum(r["Realised Value"]);
-    const category = String(r["Category"]||"").trim();
-    pMeta.set(product, { realised, category });
-    allProductsSet.add(product);
-  }
-  Master.productMeta = pMeta;
-
-  for(const [p,meta] of pMeta.entries()){
-    const cat = (meta.category||"").toLowerCase();
-    if(cat !== "npi" && !Master.npiMeta.has(p)){
-      otherProducts.push(p);
-    }
-  }
-  Master.otherProducts = [...new Set(otherProducts)].sort((a,b)=>a.localeCompare(b));
-  Master.allProducts = [...allProductsSet].sort((a,b)=>a.localeCompare(b));
-
-  // Activity list
-  const acts = [];
-  for(const r of al){
-    const a = String(r["Activity Type"]||"").trim();
-    if(a) acts.push(a);
-  }
-  Master.activityTypes = [...new Set(acts)];
-}
-
-/* ---------- MDO dropdowns ---------- */
-function initMdoDropdowns(){
-  const regions = [...Master.regionToTerritories.keys()].sort((a,b)=>a.localeCompare(b));
-  setOptions($("region"), regions, "Select Region");
-  setOptions($("territory"), [], "Select Territory");
-  setOptions($("month"), CFG.months, "Select Month");
-  setOptions($("week"), CFG.weeks, "Select Week");
-
-  $("region").addEventListener("change", ()=>{
-    const terrs = Master.regionToTerritories.get($("region").value) || [];
-    setOptions($("territory"), terrs, "Select Territory");
-    $("territory").value = "";
-  });
-}
-
-/* ---------- Calculations ---------- */
-function recalcSummaries(){
-  // NPI totals
-  let oppTotal = 0;
-  let earnedTotal = 0;
+/* ---------- Calculations (business rules) ----------
+   - Total Incentive Opportunity = Plan × Incentive rate
+   - Total Incentive Earned      = Actual × Incentive rate
+*/
+function recalcNpiSummary(){
+  let totalOpp = 0;
+  let totalEarn = 0;
 
   for(const r of State.npiRows){
     const meta = Master.npiMeta.get(r.product) || { incentiveRate: 0 };
     const plan = toNum(r.plan);
     const actual = toNum(r.actual);
-
-    // CONFIRMED BY YOU:
-    // Opportunity = Plan × Incentive rate
-    // Earned      = Actual × Incentive rate
     r.opportunity = plan * meta.incentiveRate;
     r.earned = actual * meta.incentiveRate;
-
-    oppTotal += r.opportunity;
-    earnedTotal += r.earned;
+    totalOpp += r.opportunity;
+    totalEarn += r.earned;
   }
 
-  const lose = Math.max(0, oppTotal - earnedTotal);
-  $("npiTotalEarned").textContent = rs(earnedTotal);
-  $("npiTotalLose").textContent = rs(lose);
+  $("npiEarned").textContent = rs(totalEarn);
+  $("npiLose").textContent = rs(Math.max(0, totalOpp - totalEarn));
+}
 
-  // Other revenue total (Actual × realised value)
-  let otherTotal = 0;
+function recalcOtherSummary(){
+  let totalRev = 0;
   for(const r of State.otherRows){
     const meta = Master.productMeta.get(r.product) || { realised: 0 };
     const actual = toNum(r.actual);
     r.revenue = actual * meta.realised;
-    otherTotal += r.revenue;
+    totalRev += r.revenue;
   }
-  $("otherTotalRevenue").textContent = rs(otherTotal);
+  $("otherRevenue").textContent = rs(totalRev);
+}
 
-  // Activities totals
+function recalcActivityTotals(){
   let p=0,a=0,n=0;
-  for(const r of State.actRows){
+  for(const r of State.activityRows){
     p += toNum(r.planNo);
     a += toNum(r.actualNo);
     n += toNum(r.npiNo);
@@ -326,223 +280,233 @@ function recalcSummaries(){
   $("actPlanTotal").textContent = String(p);
   $("actActualTotal").textContent = String(a);
   $("actNpiTotal").textContent = String(n);
+}
 
-  // Next week totals:
-  // Revenue = Plan × realised (from Product List OR NPI sheet)
-  // Incentive opportunity = Plan × incentiveRate (if available in NPI meta)
-  let nwRevenue = 0;
-  let nwOpp = 0;
+function recalcNextWeekSummary(){
+  let totalRev = 0;
+  let totalOpp = 0;
 
-  for(const r of State.nwRows){
+  for(const r of State.nextWeekRows){
     const plan = toNum(r.plan);
 
+    // realised from Product List OR NPI sheet
     const realised =
-      (Master.productMeta.get(r.product)?.realised) ??
-      (Master.npiMeta.get(r.product)?.realised) ??
+      Master.productMeta.get(r.product)?.realised ??
+      Master.npiMeta.get(r.product)?.realised ??
       0;
 
     const rate = Master.npiMeta.get(r.product)?.incentiveRate ?? 0;
 
     r.revenue = plan * realised;
-    r.incentiveEarned = plan * rate;
+    r.incentive = plan * rate;
 
-    nwRevenue += r.revenue;
-    nwOpp += r.incentiveEarned;
+    totalRev += r.revenue;
+    totalOpp += r.incentive;
   }
 
-  $("nwRevenue").textContent = rs(nwRevenue);
-  $("nwOpp").textContent = rs(nwOpp);
+  $("nwRevenue").textContent = rs(totalRev);
+  $("nwOpp").textContent = rs(totalOpp);
 }
 
-/* ---------- Renders ---------- */
+/* ---------- Renders (only rerender on add/remove/clear) ---------- */
 function renderNpi(){
-  const tbody = $("npiTable").querySelector("tbody");
+  const tbody = $("tblNpi").querySelector("tbody");
   tbody.innerHTML = "";
 
-  State.npiRows.forEach((r, idx)=>{
+  State.npiRows.forEach((row, idx)=>{
     const tr = document.createElement("tr");
 
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = String(idx+1);
+    tr.appendChild(tdIdx);
 
-    // Product dropdown from NPI sheet
-    const tdP = document.createElement("td");
-    const sel = document.createElement("select");
-    setOptions(sel, Master.npiProducts, "Select product");
-    sel.value = r.product || "";
-    sel.addEventListener("change", ()=>{
-      r.product = sel.value;
-      recalcSummaries();
-      renderNpi();
-    });
-    tdP.appendChild(sel);
-    tr.appendChild(tdP);
+    const tdProd = document.createElement("td");
+    const sel = makeSelect(Master.npiProducts, row.product, (v)=>{
+      row.product = v;
+      recalcNpiSummary();
+      // update computed cells without rerender
+      oppCell.textContent = rs(row.opportunity || 0);
+      earnCell.textContent = rs(row.earned || 0);
+    }, "Select product");
+    tdProd.appendChild(sel);
+    tr.appendChild(tdProd);
 
-    // Plan
-    const tdPlan = document.createElement("td"); tdPlan.className="num";
-    tdPlan.appendChild(numInput(r.plan, v=>{
-      r.plan = v;
-      recalcSummaries();
-      renderNpi(); // ok on blur
+    const tdPlan = document.createElement("td");
+    tdPlan.className = "num";
+    tdPlan.appendChild(makeNumberInput(row.plan, (v)=>{
+      row.plan = v;
+      recalcNpiSummary();
+      oppCell.textContent = rs(row.opportunity || 0);
     }));
     tr.appendChild(tdPlan);
 
-    // Actual
-    const tdA = document.createElement("td"); tdA.className="num";
-    tdA.appendChild(numInput(r.actual, v=>{
-      r.actual = v;
-      recalcSummaries();
-      renderNpi(); // ok on blur
+    const tdActual = document.createElement("td");
+    tdActual.className = "num";
+    tdActual.appendChild(makeNumberInput(row.actual, (v)=>{
+      row.actual = v;
+      recalcNpiSummary();
+      earnCell.textContent = rs(row.earned || 0);
     }));
-    tr.appendChild(tdA);
+    tr.appendChild(tdActual);
 
-    // Opportunity
-    const tdOpp = document.createElement("td"); tdOpp.className="num";
-    tdOpp.textContent = rs(r.opportunity || 0);
+    const tdOpp = document.createElement("td");
+    tdOpp.className = "num";
+    const oppCell = document.createElement("span");
+    oppCell.textContent = rs(row.opportunity || 0);
+    tdOpp.appendChild(oppCell);
     tr.appendChild(tdOpp);
 
-    // Earned
-    const tdEarn = document.createElement("td"); tdEarn.className="num";
-    tdEarn.textContent = rs(r.earned || 0);
+    const tdEarn = document.createElement("td");
+    tdEarn.className = "num";
+    const earnCell = document.createElement("span");
+    earnCell.textContent = rs(row.earned || 0);
+    tdEarn.appendChild(earnCell);
     tr.appendChild(tdEarn);
 
     const tdDel = document.createElement("td");
-    tdDel.appendChild(delBtn(()=>{
+    tdDel.appendChild(makeDelButton(()=>{
       State.npiRows.splice(idx,1);
-      recalcSummaries();
       renderNpi();
+      recalcNpiSummary();
     }));
     tr.appendChild(tdDel);
 
     tbody.appendChild(tr);
   });
 
-  recalcSummaries();
+  recalcNpiSummary();
 }
 
 function renderOther(){
-  const tbody = $("otherTable").querySelector("tbody");
+  const tbody = $("tblOther").querySelector("tbody");
   tbody.innerHTML = "";
 
-  State.otherRows.forEach((r, idx)=>{
+  State.otherRows.forEach((row, idx)=>{
     const tr = document.createElement("tr");
 
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = String(idx+1);
+    tr.appendChild(tdIdx);
 
-    // Product dropdown from Product List (non-NPI)
-    const tdP = document.createElement("td");
-    const sel = document.createElement("select");
-    setOptions(sel, Master.otherProducts, "Select product");
-    sel.value = r.product || "";
-    sel.addEventListener("change", ()=>{
-      r.product = sel.value;
-      recalcSummaries();
-      renderOther();
-    });
-    tdP.appendChild(sel);
-    tr.appendChild(tdP);
+    const tdProd = document.createElement("td");
+    const sel = makeSelect(Master.otherProducts, row.product, (v)=>{
+      row.product = v;
+      recalcOtherSummary();
+      revenueCell.textContent = rs(row.revenue || 0);
+    }, "Select product");
+    tdProd.appendChild(sel);
+    tr.appendChild(tdProd);
 
-    const tdPlan = document.createElement("td"); tdPlan.className="num";
-    tdPlan.appendChild(numInput(r.plan, v=>{ r.plan = v; }));
+    const tdPlan = document.createElement("td");
+    tdPlan.className = "num";
+    tdPlan.appendChild(makeNumberInput(row.plan, (v)=>{ row.plan = v; }));
     tr.appendChild(tdPlan);
 
-    const tdA = document.createElement("td"); tdA.className="num";
-    tdA.appendChild(numInput(r.actual, v=>{
-      r.actual = v;
-      recalcSummaries();
-      renderOther(); // ok on blur
+    const tdActual = document.createElement("td");
+    tdActual.className = "num";
+    tdActual.appendChild(makeNumberInput(row.actual, (v)=>{
+      row.actual = v;
+      recalcOtherSummary();
+      revenueCell.textContent = rs(row.revenue || 0);
     }));
-    tr.appendChild(tdA);
+    tr.appendChild(tdActual);
 
-    const tdR = document.createElement("td"); tdR.className="num";
-    tdR.textContent = rs(r.revenue || 0);
-    tr.appendChild(tdR);
+    const tdRev = document.createElement("td");
+    tdRev.className = "num";
+    const revenueCell = document.createElement("span");
+    revenueCell.textContent = rs(row.revenue || 0);
+    tdRev.appendChild(revenueCell);
+    tr.appendChild(tdRev);
 
     const tdDel = document.createElement("td");
-    tdDel.appendChild(delBtn(()=>{
+    tdDel.appendChild(makeDelButton(()=>{
       State.otherRows.splice(idx,1);
-      recalcSummaries();
       renderOther();
+      recalcOtherSummary();
     }));
     tr.appendChild(tdDel);
 
     tbody.appendChild(tr);
   });
 
-  recalcSummaries();
+  recalcOtherSummary();
 }
 
 function renderActivities(){
-  const tbody = $("activityTable").querySelector("tbody");
+  const tbody = $("tblActivities").querySelector("tbody");
   tbody.innerHTML = "";
 
-  State.actRows.forEach((r, idx)=>{
+  State.activityRows.forEach((row, idx)=>{
     const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
 
-    const tdT = document.createElement("td");
-    tdT.appendChild(typeSelector(r.typeObj, (v)=>{ r.typeObj=v; }));
-    tr.appendChild(tdT);
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = String(idx+1);
+    tr.appendChild(tdIdx);
+
+    const tdAct = document.createElement("td");
+    // Only dropdown from master (no “DD”, no custom placeholder)
+    tdAct.appendChild(makeSelect(Master.activityTypes, row.activity, (v)=>{ row.activity = v; }, "Select activity"));
+    tr.appendChild(tdAct);
 
     const tdP = document.createElement("td"); tdP.className="num";
-    tdP.appendChild(numInput(r.planNo, v=>{ r.planNo=v; recalcSummaries(); }));
+    tdP.appendChild(makeNumberInput(row.planNo, (v)=>{ row.planNo=v; recalcActivityTotals(); }));
     tr.appendChild(tdP);
 
     const tdA = document.createElement("td"); tdA.className="num";
-    tdA.appendChild(numInput(r.actualNo, v=>{ r.actualNo=v; recalcSummaries(); }));
+    tdA.appendChild(makeNumberInput(row.actualNo, (v)=>{ row.actualNo=v; recalcActivityTotals(); }));
     tr.appendChild(tdA);
 
     const tdN = document.createElement("td"); tdN.className="num";
-    tdN.appendChild(numInput(r.npiNo, v=>{ r.npiNo=v; recalcSummaries(); }));
+    tdN.appendChild(makeNumberInput(row.npiNo, (v)=>{ row.npiNo=v; recalcActivityTotals(); }));
     tr.appendChild(tdN);
 
     const tdDel = document.createElement("td");
-    tdDel.appendChild(delBtn(()=>{
-      State.actRows.splice(idx,1);
-      recalcSummaries();
+    tdDel.appendChild(makeDelButton(()=>{
+      State.activityRows.splice(idx,1);
       renderActivities();
+      recalcActivityTotals();
     }));
     tr.appendChild(tdDel);
 
     tbody.appendChild(tr);
   });
 
-  recalcSummaries();
+  recalcActivityTotals();
 }
 
-function renderPhotoRows(){
-  const tbody = $("photoTable").querySelector("tbody");
+function renderPhotos(){
+  const tbody = $("tblPhotos").querySelector("tbody");
   tbody.innerHTML = "";
 
-  State.photoRows.forEach((r, idx)=>{
+  State.photoRows.forEach((row, idx)=>{
     const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
 
-    const tdA = document.createElement("td");
-    const sel = document.createElement("select");
-    setOptions(sel, Master.activityTypes, "Select activity");
-    sel.value = r.activity || "";
-    sel.addEventListener("change", ()=>{ r.activity = sel.value; renderPhotoPreview(); });
-    tdA.appendChild(sel);
-    tr.appendChild(tdA);
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = String(idx+1);
+    tr.appendChild(tdIdx);
 
-    const tdU = document.createElement("td");
-    const up = document.createElement("input");
-    up.type = "file";
-    up.accept = "image/*";
-    up.addEventListener("change", async (e)=>{
+    const tdAct = document.createElement("td");
+    tdAct.appendChild(makeSelect(Master.activityTypes, row.activity, (v)=>{ row.activity=v; renderPhotoPreview(); }, "Select activity"));
+    tr.appendChild(tdAct);
+
+    const tdUp = document.createElement("td");
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/*";
+    inp.addEventListener("change", async (e)=>{
       const file = e.target.files?.[0];
       if(!file) return;
-      r.fileName = file.name;
-      r.dataUrl = await compressImage(file);
+      row.fileName = file.name;
+      row.dataUrl = await compressImage(file);
       renderPhotoPreview();
     });
-    tdU.appendChild(up);
-    tr.appendChild(tdU);
+    tdUp.appendChild(inp);
+    tr.appendChild(tdUp);
 
     const tdDel = document.createElement("td");
-    tdDel.appendChild(delBtn(()=>{
+    tdDel.appendChild(makeDelButton(()=>{
       State.photoRows.splice(idx,1);
-      renderPhotoRows();
+      renderPhotos();
       renderPhotoPreview();
     }));
     tr.appendChild(tdDel);
@@ -554,308 +518,372 @@ function renderPhotoRows(){
 }
 
 function renderPhotoPreview(){
-  const grid = $("photoPreviewGrid");
+  const grid = $("photoPreview");
   grid.innerHTML = "";
-
-  const slice = State.photoRows.filter(p=>p.dataUrl).slice(0, CFG.maxActivityPhotos);
-  slice.forEach((p)=>{
-    const card = document.createElement("div");
-    card.className = "photo-card";
-    card.innerHTML = `
-      <img alt="photo"/>
-      <div class="photo-meta">
-        <div class="photo-caption"></div>
-      </div>
-    `;
-    card.querySelector("img").src = p.dataUrl;
-    card.querySelector(".photo-caption").textContent = p.activity || "Activity";
-    grid.appendChild(card);
-  });
+  State.photoRows
+    .filter(p=>p.dataUrl)
+    .slice(0, CFG.maxActPhotos)
+    .forEach((p)=>{
+      const card = document.createElement("div");
+      card.className = "photoCard";
+      card.innerHTML = `<img alt="photo"><div class="photoMeta"></div>`;
+      card.querySelector("img").src = p.dataUrl;
+      card.querySelector(".photoMeta").textContent = p.activity || "Activity";
+      grid.appendChild(card);
+    });
 }
 
 function renderNextWeek(){
-  const tbody = $("nextWeekTable").querySelector("tbody");
+  const tbody = $("tblNextWeek").querySelector("tbody");
   tbody.innerHTML = "";
 
-  State.nwRows.forEach((r, idx)=>{
+  State.nextWeekRows.forEach((row, idx)=>{
     const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
 
-    const tdP = document.createElement("td");
-    const sel = document.createElement("select");
-    setOptions(sel, Master.allProducts, "Select product");
-    sel.value = r.product || "";
-    sel.addEventListener("change", ()=>{
-      r.product = sel.value;
-      recalcSummaries();
-      renderNextWeek();
-    });
-    tdP.appendChild(sel);
-    tr.appendChild(tdP);
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = String(idx+1);
+    tr.appendChild(tdIdx);
+
+    const tdProd = document.createElement("td");
+    tdProd.appendChild(makeSelect(Master.allProducts, row.product, (v)=>{
+      row.product = v;
+      recalcNextWeekSummary();
+      revCell.textContent = rs(row.revenue || 0);
+      incCell.textContent = rs(row.incentive || 0);
+    }, "Select product"));
+    tr.appendChild(tdProd);
 
     const tdPlan = document.createElement("td"); tdPlan.className="num";
-    tdPlan.appendChild(numInput(r.plan, v=>{
-      r.plan = v;
-      recalcSummaries();
-      renderNextWeek();
+    tdPlan.appendChild(makeNumberInput(row.plan, (v)=>{
+      row.plan = v;
+      recalcNextWeekSummary();
+      revCell.textContent = rs(row.revenue || 0);
+      incCell.textContent = rs(row.incentive || 0);
     }));
     tr.appendChild(tdPlan);
 
-    const tdA = document.createElement("td"); tdA.className="num";
-    tdA.appendChild(numInput(r.actual, v=>{ r.actual = v; }));
-    tr.appendChild(tdA);
+    const tdActual = document.createElement("td"); tdActual.className="num";
+    tdActual.appendChild(makeNumberInput(row.actual, (v)=>{ row.actual=v; }));
+    tr.appendChild(tdActual);
 
-    const tdR = document.createElement("td"); tdR.className="num";
-    tdR.textContent = rs(r.revenue || 0);
-    tr.appendChild(tdR);
+    const tdRev = document.createElement("td"); tdRev.className="num";
+    const revCell = document.createElement("span");
+    revCell.textContent = rs(row.revenue || 0);
+    tdRev.appendChild(revCell);
+    tr.appendChild(tdRev);
 
-    const tdI = document.createElement("td"); tdI.className="num";
-    tdI.textContent = rs(r.incentiveEarned || 0);
-    tr.appendChild(tdI);
+    const tdInc = document.createElement("td"); tdInc.className="num";
+    const incCell = document.createElement("span");
+    incCell.textContent = rs(row.incentive || 0);
+    tdInc.appendChild(incCell);
+    tr.appendChild(tdInc);
 
     const tdDel = document.createElement("td");
-    tdDel.appendChild(delBtn(()=>{
-      State.nwRows.splice(idx,1);
-      recalcSummaries();
+    tdDel.appendChild(makeDelButton(()=>{
+      State.nextWeekRows.splice(idx,1);
       renderNextWeek();
+      recalcNextWeekSummary();
     }));
     tr.appendChild(tdDel);
 
     tbody.appendChild(tr);
   });
 
-  recalcSummaries();
+  recalcNextWeekSummary();
 }
 
-function renderActivityPlan(){
-  const tbody = $("activityPlanTable").querySelector("tbody");
+function renderActPlan(){
+  const tbody = $("tblActPlan").querySelector("tbody");
   tbody.innerHTML = "";
 
-  State.apRows.forEach((r, idx)=>{
+  State.actPlanRows.forEach((row, idx)=>{
     const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
 
-    const tdT = document.createElement("td");
-    tdT.appendChild(typeSelector(r.typeObj, (v)=>{ r.typeObj=v; }));
-    tr.appendChild(tdT);
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = String(idx+1);
+    tr.appendChild(tdIdx);
 
-    const tdP = document.createElement("td"); tdP.className="num";
-    tdP.appendChild(numInput(r.planNo, v=>{ r.planNo=v; }));
-    tr.appendChild(tdP);
+    const tdAct = document.createElement("td");
+    tdAct.appendChild(makeSelect(Master.activityTypes, row.activity, (v)=>{ row.activity=v; }, "Select activity"));
+    tr.appendChild(tdAct);
 
-    const tdV = document.createElement("td");
-    const inp = document.createElement("input");
-    inp.type = "text";
-    inp.placeholder = "Village1, Village2, Village3";
-    inp.value = r.villages || "";
-    inp.addEventListener("blur", ()=>{
-      r.villages = inp.value;
-      renderActivityPlan();
-    });
-    tdV.appendChild(inp);
-    tr.appendChild(tdV);
+    const tdPlan = document.createElement("td"); tdPlan.className="num";
+    tdPlan.appendChild(makeNumberInput(row.planNo, (v)=>{ row.planNo=v; }));
+    tr.appendChild(tdPlan);
 
-    const tdC = document.createElement("td"); tdC.className="num";
-    const count = String(r.villages||"")
-      .split(",")
-      .map(s=>s.trim())
-      .filter(Boolean).length;
-    r.villageNo = count;
-    tdC.textContent = String(count);
-    tr.appendChild(tdC);
+    const tdVill = document.createElement("td");
+    tdVill.appendChild(makeTextInput(row.villages, (v)=>{
+      row.villages = v;
+      const count = v.split(",").map(s=>s.trim()).filter(Boolean).length;
+      row.villageNo = count;
+      villageNoCell.textContent = String(count);
+    }, "Village1, Village2"));
+    tr.appendChild(tdVill);
+
+    const tdCount = document.createElement("td"); tdCount.className="num";
+    const villageNoCell = document.createElement("span");
+    villageNoCell.textContent = String(row.villageNo || 0);
+    tdCount.appendChild(villageNoCell);
+    tr.appendChild(tdCount);
 
     const tdDel = document.createElement("td");
-    tdDel.appendChild(delBtn(()=>{ State.apRows.splice(idx,1); renderActivityPlan(); }));
+    tdDel.appendChild(makeDelButton(()=>{
+      State.actPlanRows.splice(idx,1);
+      renderActPlan();
+    }));
     tr.appendChild(tdDel);
 
     tbody.appendChild(tr);
   });
 }
 
-function renderSpecialPhotos(){
-  const tbody = $("spPhotoTable").querySelector("tbody");
+function renderSpPhotos(){
+  const tbody = $("tblSpPhotos").querySelector("tbody");
   tbody.innerHTML = "";
 
-  State.spPhotoRows.forEach((r, idx)=>{
+  State.spPhotoRows.forEach((row, idx)=>{
     const tr = document.createElement("tr");
-    tr.appendChild(Object.assign(document.createElement("td"), {textContent:String(idx+1)}));
 
-    const tdA = document.createElement("td");
-    const sel = document.createElement("select");
-    setOptions(sel, Master.activityTypes, "Select activity");
-    sel.value = r.activity || "";
-    sel.addEventListener("change", ()=>{ r.activity = sel.value; renderSpecialPreview(); });
-    tdA.appendChild(sel);
-    tr.appendChild(tdA);
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = String(idx+1);
+    tr.appendChild(tdIdx);
 
-    const tdU = document.createElement("td");
-    const up = document.createElement("input");
-    up.type = "file";
-    up.accept = "image/*";
-    up.addEventListener("change", async (e)=>{
+    const tdAct = document.createElement("td");
+    tdAct.appendChild(makeSelect(Master.activityTypes, row.activity, (v)=>{ row.activity=v; renderSpPhotoPreview(); }, "Select activity"));
+    tr.appendChild(tdAct);
+
+    const tdUp = document.createElement("td");
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/*";
+    inp.addEventListener("change", async (e)=>{
       const file = e.target.files?.[0];
       if(!file) return;
-      r.fileName = file.name;
-      r.dataUrl = await compressImage(file);
-      renderSpecialPreview();
+      row.fileName = file.name;
+      row.dataUrl = await compressImage(file);
+      renderSpPhotoPreview();
     });
-    tdU.appendChild(up);
-    tr.appendChild(tdU);
+    tdUp.appendChild(inp);
+    tr.appendChild(tdUp);
 
     const tdDel = document.createElement("td");
-    tdDel.appendChild(delBtn(()=>{
+    tdDel.appendChild(makeDelButton(()=>{
       State.spPhotoRows.splice(idx,1);
-      renderSpecialPhotos();
-      renderSpecialPreview();
+      renderSpPhotos();
+      renderSpPhotoPreview();
     }));
     tr.appendChild(tdDel);
 
     tbody.appendChild(tr);
   });
 
-  renderSpecialPreview();
+  renderSpPhotoPreview();
 }
 
-function renderSpecialPreview(){
-  const grid = $("spPhotoPreviewGrid");
+function renderSpPhotoPreview(){
+  const grid = $("spPhotoPreview");
   grid.innerHTML = "";
-
-  const slice = State.spPhotoRows.filter(p=>p.dataUrl).slice(0, CFG.maxSpecialPhotos);
-  slice.forEach((p)=>{
-    const card = document.createElement("div");
-    card.className = "photo-card";
-    card.innerHTML = `
-      <img alt="photo"/>
-      <div class="photo-meta">
-        <div class="photo-caption"></div>
-      </div>
-    `;
-    card.querySelector("img").src = p.dataUrl;
-    card.querySelector(".photo-caption").textContent = p.activity || "Special";
-    grid.appendChild(card);
-  });
+  State.spPhotoRows
+    .filter(p=>p.dataUrl)
+    .slice(0, CFG.maxSpPhotos)
+    .forEach((p)=>{
+      const card = document.createElement("div");
+      card.className = "photoCard";
+      card.innerHTML = `<img alt="photo"><div class="photoMeta"></div>`;
+      card.querySelector("img").src = p.dataUrl;
+      card.querySelector(".photoMeta").textContent = p.activity || "Special";
+      grid.appendChild(card);
+    });
 }
 
-/* ---------- Buttons + wiring (THIS IS WHAT FIXES YOUR “NOT WORKING”) ---------- */
+/* ---------- Buttons ---------- */
 function wireButtons(){
+  // Clear all
   $("btnClearAll").addEventListener("click", ()=>{
-    State.mdoName=""; State.hq=""; State.region=""; State.territory=""; State.month=""; State.week="";
-    State.npiRows=[]; State.otherRows=[]; State.actRows=[];
-    State.photoRows=[]; State.nwRows=[]; State.apRows=[];
-    State.spDesc=""; State.spPhotoRows=[];
-
-    $("mdoName").value="";
-    $("hq").value="";
-    $("region").value="";
+    // form
+    $("mdoName").value = "";
+    $("hq").value = "";
+    $("region").value = "";
     setOptions($("territory"), [], "Select Territory");
-    $("month").value="";
-    $("week").value="";
-    $("spDesc").value="";
+    $("month").value = "";
+    $("week").value = "";
+
+    // state
+    State.npiRows = [];
+    State.otherRows = [];
+    State.activityRows = [];
+    State.photoRows = [];
+    State.nextWeekRows = [];
+    State.actPlanRows = [];
+    State.spDesc = "";
+    State.spPhotoRows = [];
+
+    $("spDesc").value = "";
 
     renderNpi();
     renderOther();
     renderActivities();
-    renderPhotoRows();
+    renderPhotos();
     renderNextWeek();
-    renderActivityPlan();
-    renderSpecialPhotos();
-    recalcSummaries();
+    renderActPlan();
+    renderSpPhotos();
+
+    clearFatal();
     window.scrollTo({top:0, behavior:"smooth"});
   });
 
-  $("npiAdd").addEventListener("click", ()=>{
-    if(State.npiRows.length >= CFG.maxNpiRows){ alert(`Max ${CFG.maxNpiRows} rows allowed.`); return; }
-    State.npiRows.push({product:"", plan:"", actual:"", opportunity:0, earned:0});
+  // NPI
+  $("btnNpiAdd").addEventListener("click", ()=>{
+    if(State.npiRows.length >= CFG.maxNpiRows) return alert(`Max ${CFG.maxNpiRows} rows allowed.`);
+    State.npiRows.push({ product:"", plan:"", actual:"", opportunity:0, earned:0 });
     renderNpi();
   });
-  $("npiClear").addEventListener("click", ()=>{ State.npiRows = []; renderNpi(); });
+  $("btnNpiClear").addEventListener("click", ()=>{
+    State.npiRows = [];
+    renderNpi();
+  });
 
-  $("otherAdd").addEventListener("click", ()=>{
-    if(State.otherRows.length >= CFG.maxOtherRows){ alert(`Max ${CFG.maxOtherRows} rows allowed.`); return; }
-    State.otherRows.push({product:"", plan:"", actual:"", revenue:0});
+  // Other
+  $("btnOtherAdd").addEventListener("click", ()=>{
+    if(State.otherRows.length >= CFG.maxOtherRows) return alert(`Max ${CFG.maxOtherRows} rows allowed.`);
+    State.otherRows.push({ product:"", plan:"", actual:"", revenue:0 });
     renderOther();
   });
-  $("otherClear").addEventListener("click", ()=>{ State.otherRows = []; renderOther(); });
+  $("btnOtherClear").addEventListener("click", ()=>{
+    State.otherRows = [];
+    renderOther();
+  });
 
-  $("actAdd").addEventListener("click", ()=>{
-    State.actRows.push({typeObj:{mode:"preset",value:""}, planNo:"", actualNo:"", npiNo:""});
+  // Activities update
+  $("btnActAdd").addEventListener("click", ()=>{
+    State.activityRows.push({ activity:"", planNo:"", actualNo:"", npiNo:"" });
     renderActivities();
   });
-  $("actClear").addEventListener("click", ()=>{ State.actRows = []; renderActivities(); });
-
-  $("photoAdd").addEventListener("click", ()=>{
-    if(State.photoRows.length >= CFG.maxActivityPhotos){ alert(`Max ${CFG.maxActivityPhotos} photos allowed.`); return; }
-    State.photoRows.push({activity:"", dataUrl:"", fileName:""});
-    renderPhotoRows();
+  $("btnActClear").addEventListener("click", ()=>{
+    State.activityRows = [];
+    renderActivities();
   });
-  $("photoClear").addEventListener("click", ()=>{ State.photoRows = []; renderPhotoRows(); });
 
-  $("nwAdd").addEventListener("click", ()=>{
-    if(State.nwRows.length >= CFG.maxNextWeekRows){ alert(`Max ${CFG.maxNextWeekRows} rows allowed.`); return; }
-    State.nwRows.push({product:"", plan:"", actual:"", revenue:0, incentiveEarned:0});
+  // Photos
+  $("btnPhotoAdd").addEventListener("click", ()=>{
+    if(State.photoRows.length >= CFG.maxActPhotos) return alert(`Max ${CFG.maxActPhotos} photos allowed.`);
+    State.photoRows.push({ activity:"", dataUrl:"", fileName:"" });
+    renderPhotos();
+  });
+  $("btnPhotoClear").addEventListener("click", ()=>{
+    State.photoRows = [];
+    renderPhotos();
+  });
+
+  // Next week
+  $("btnNwAdd").addEventListener("click", ()=>{
+    if(State.nextWeekRows.length >= CFG.maxNextWeekRows) return alert(`Max ${CFG.maxNextWeekRows} rows allowed.`);
+    State.nextWeekRows.push({ product:"", plan:"", actual:"", revenue:0, incentive:0 });
     renderNextWeek();
   });
-  $("nwClear").addEventListener("click", ()=>{ State.nwRows = []; renderNextWeek(); recalcSummaries(); });
-
-  $("apAdd").addEventListener("click", ()=>{
-    State.apRows.push({typeObj:{mode:"preset",value:""}, planNo:"", villages:"", villageNo:0});
-    renderActivityPlan();
+  $("btnNwClear").addEventListener("click", ()=>{
+    State.nextWeekRows = [];
+    renderNextWeek();
   });
-  $("apClear").addEventListener("click", ()=>{ State.apRows = []; renderActivityPlan(); });
 
+  // Activity plan
+  $("btnApAdd").addEventListener("click", ()=>{
+    State.actPlanRows.push({ activity:"", planNo:"", villages:"", villageNo:0 });
+    renderActPlan();
+  });
+  $("btnApClear").addEventListener("click", ()=>{
+    State.actPlanRows = [];
+    renderActPlan();
+  });
+
+  // Special
   $("spDesc").addEventListener("input", ()=>{ State.spDesc = $("spDesc").value || ""; });
-
-  $("spPhotoAdd").addEventListener("click", ()=>{
-    if(State.spPhotoRows.length >= CFG.maxSpecialPhotos){ alert(`Max ${CFG.maxSpecialPhotos} photos allowed.`); return; }
-    State.spPhotoRows.push({activity:"", dataUrl:"", fileName:""});
-    renderSpecialPhotos();
-  });
-  $("spPhotoClear").addEventListener("click", ()=>{ State.spPhotoRows = []; renderSpecialPhotos(); });
-
-  $("spClearAll").addEventListener("click", ()=>{
+  $("btnSpClear").addEventListener("click", ()=>{
     State.spDesc = "";
     $("spDesc").value = "";
     State.spPhotoRows = [];
-    renderSpecialPhotos();
+    renderSpPhotos();
   });
 
-  $("btnPdf").addEventListener("click", ()=>{
-    // capture latest MDO fields
-    State.mdoName = $("mdoName").value || "";
-    State.hq = $("hq").value || "";
-    State.region = $("region").value || "";
-    State.territory = $("territory").value || "";
-    State.month = $("month").value || "";
-    State.week = $("week").value || "";
-    State.spDesc = $("spDesc").value || "";
+  // Special photos
+  $("btnSpPhotoAdd").addEventListener("click", ()=>{
+    if(State.spPhotoRows.length >= CFG.maxSpPhotos) return alert(`Max ${CFG.maxSpPhotos} photos allowed.`);
+    State.spPhotoRows.push({ activity:"", dataUrl:"", fileName:"" });
+    renderSpPhotos();
+  });
+  $("btnSpPhotoClear").addEventListener("click", ()=>{
+    State.spPhotoRows = [];
+    renderSpPhotos();
+  });
 
-    recalcSummaries();
-    window.generateA4Pdf({ Master, State, typeLabel, rs });
+  // PDF
+  $("btnPdf").addEventListener("click", ()=>{
+    const payload = {
+      masterLoaded: Master.npiProducts.length > 0 || Master.otherProducts.length > 0,
+      mdo: {
+        name: $("mdoName").value || "",
+        hq: $("hq").value || "",
+        region: $("region").value || "",
+        territory: $("territory").value || "",
+        month: $("month").value || "",
+        week: $("week").value ? `Week ${$("week").value}` : ""
+      },
+      npiRows: State.npiRows,
+      otherRows: State.otherRows,
+      activityRows: State.activityRows,
+      photos: State.photoRows.filter(p=>p.dataUrl).slice(0, CFG.maxActPhotos),
+      nextWeekRows: State.nextWeekRows,
+      actPlanRows: State.actPlanRows,
+      spDesc: $("spDesc").value || "",
+      spPhotos: State.spPhotoRows.filter(p=>p.dataUrl).slice(0, CFG.maxSpPhotos)
+    };
+
+    // Ensure latest summaries
+    recalcNpiSummary();
+    recalcOtherSummary();
+    recalcActivityTotals();
+    recalcNextWeekSummary();
+
+    window.generatePerformancePdf(payload, Master, rs);
   });
 }
 
-/* ---------- Boot (ensures DOM exists -> buttons always bind) ---------- */
+/* ---------- Boot ---------- */
 async function boot(){
+  wireButtons(); // ✅ ALWAYS wire buttons first
+
+  // Init dropdowns with empty placeholders (safe even if master fails)
+  setOptions($("region"), [], "Select Region");
+  setOptions($("territory"), [], "Select Territory");
+  setOptions($("month"), CFG.months, "Select Month");
+  setOptions($("week"), CFG.weeks, "Select Week");
+
+  // Render empty tables
+  renderNpi(); renderOther(); renderActivities(); renderPhotos(); renderNextWeek(); renderActPlan(); renderSpPhotos();
+
+  clearFatal();
+  setStatus("loading", "Loading master data…");
+
   try{
     await loadMasterExcel();
+    initHeaderDropdowns();
+
+    setStatus("ok", "Master data loaded");
+    clearFatal();
   }catch(err){
     console.error(err);
-    showFatal(`Unable to load master data. Please check <b>${CFG.excelPath}</b> and refresh.`);
-    return;
+    setStatus("warn", "Master data not loaded");
+    showFatal(`Admin Excel not loaded. Check <b>${CFG.excelPath}</b> (case-sensitive on GitHub Pages). Buttons & PDF still work.`);
   }
 
-  initMdoDropdowns();
-
+  // Re-render now that dropdown data exists (if loaded)
   renderNpi();
   renderOther();
   renderActivities();
-  renderPhotoRows();
+  renderPhotos();
   renderNextWeek();
-  renderActivityPlan();
-  renderSpecialPhotos();
-  recalcSummaries();
-
-  wireButtons();
+  renderActPlan();
+  renderSpPhotos();
 }
 
 document.addEventListener("DOMContentLoaded", boot);
