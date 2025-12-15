@@ -1,184 +1,270 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Performance Report</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <title>Performance Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
 
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+  <!-- XLSX for Excel reading -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- jsPDF + autoTable -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 </head>
 
 <body>
+  <header class="app-header">
+    <div class="app-header__inner">
+      <div>
+        <div class="app-title">Performance Report</div>
+        <div class="app-subtitle">Weekly Field Performance</div>
+      </div>
+    </div>
+  </header>
 
-<header class="app-header">
-  <div class="app-title">Performance Report</div>
-  <div class="app-subtitle">Weekly Field Performance</div>
-</header>
+  <main class="app-container">
+    <!-- Error banner -->
+    <div id="errorBanner" class="fatal hidden"></div>
 
-<main class="app-container">
+    <!-- 1) MDO -->
+    <section class="card">
+      <div class="card-head">
+        <h2>1) MDO Information</h2>
+      </div>
 
-<!-- 1 -->
-<section class="card">
-<h2>1) MDO Information</h2>
-<div class="form-grid">
-  <input id="mdoName" placeholder="Name">
-  <input id="hq" placeholder="HQ">
-  <input id="region" placeholder="Region">
-  <input id="territory" placeholder="Territory">
-  <input id="month" placeholder="Month">
-  <input id="week" placeholder="Week">
-</div>
-</section>
+      <div class="form-grid">
+        <div class="field">
+          <label>Name</label>
+          <input id="mdoName" placeholder="Enter name" />
+        </div>
 
-<!-- 2 -->
-<section class="card">
-<h2>2) NPI Performance</h2>
-<button id="npiAdd" class="btn btn-primary">+ Add Row</button>
-<button id="npiClear" class="btn btn-secondary">Clear</button>
+        <div class="field">
+          <label>HQ</label>
+          <input id="hq" placeholder="Enter HQ" />
+        </div>
 
-<div class="table-wrap">
-<table class="table" id="npiTable">
-<thead>
-<tr>
-<th>#</th><th>Product</th>
-<th class="num">Plan</th>
-<th class="num">Actual</th>
-<th class="num">Opportunity</th>
-<th class="num">Earned</th>
-<th></th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
+        <div class="field">
+          <label>Region</label>
+          <select id="region"></select>
+        </div>
 
-<div class="highlight">Earned: ₹ <span id="npiEarned">0</span></div>
-</section>
+        <div class="field">
+          <label>Territory</label>
+          <select id="territory"></select>
+        </div>
 
-<!-- 3 -->
-<section class="card">
-<h2>3) Other Products</h2>
-<button id="otherAdd" class="btn btn-primary">+ Add Row</button>
-<button id="otherClear" class="btn btn-secondary">Clear</button>
+        <div class="field">
+          <label>Month</label>
+          <select id="month"></select>
+        </div>
 
-<div class="table-wrap">
-<table class="table" id="otherTable">
-<thead>
-<tr>
-<th>#</th><th>Product</th>
-<th class="num">Plan</th>
-<th class="num">Actual</th>
-<th class="num">Revenue</th>
-<th></th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
+        <div class="field">
+          <label>Week</label>
+          <select id="week"></select>
+        </div>
+      </div>
 
-<div class="highlight">Revenue: ₹ <span id="otherRevenue">0</span></div>
-</section>
+      <div class="muted" id="excelStatus">Loading master data…</div>
+    </section>
 
-<!-- 4 -->
-<section class="card">
-<h2>4) Activities Update</h2>
-<button id="actAdd" class="btn btn-primary">+ Add Row</button>
-<button id="actClear" class="btn btn-secondary">Clear</button>
+    <!-- 2) NPI -->
+    <section class="card">
+      <div class="card-head subhead">
+        <h2>2) NPI Performance</h2>
+        <div class="card-actions">
+          <button type="button" id="npiAdd" class="btn btn-primary btn-compact">+ Add Row</button>
+          <button type="button" id="npiClear" class="btn btn-secondary btn-compact">Clear</button>
+        </div>
+      </div>
 
-<div class="table-wrap">
-<table class="table" id="actTable">
-<thead>
-<tr>
-<th>#</th><th>Activity</th>
-<th class="num">Plan</th>
-<th class="num">Actual</th>
-<th class="num">NPI</th>
-<th></th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
-</section>
+      <div class="table-wrap">
+        <table class="table" id="npiTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Product</th>
+              <th class="num w-72">Plan</th>
+              <th class="num w-72">Actual</th>
+              <th class="num">Opportunity</th>
+              <th class="num">Earned</th>
+              <th class="w-48">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
-<!-- 5 -->
-<section class="card">
-<h2>5) Next Week Product Plan</h2>
-<button id="nwAdd" class="btn btn-primary">+ Add Row</button>
-<button id="nwClear" class="btn btn-secondary">Clear</button>
+      <div class="totals-card">
+        <div class="totals-label">Congratulations, you have earned</div>
+        <div class="totals-value"><span id="npiEarned">0</span> Rs !!!</div>
+      </div>
+    </section>
 
-<div class="table-wrap">
-<table class="table" id="nwTable">
-<thead>
-<tr>
-<th>#</th><th>Product</th>
-<th class="num">Plan</th>
-<th class="num">Revenue</th>
-<th class="num">Incentive</th>
-<th></th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
+    <!-- 3) Other Products -->
+    <section class="card">
+      <div class="card-head subhead">
+        <h2>3) Other Products</h2>
+        <div class="card-actions">
+          <button type="button" id="otherAdd" class="btn btn-primary btn-compact">+ Add Row</button>
+          <button type="button" id="otherClear" class="btn btn-secondary btn-compact">Clear</button>
+        </div>
+      </div>
 
-<div class="highlight">Next Week Incentive: ₹ <span id="nwIncentive">0</span></div>
-</section>
+      <div class="table-wrap">
+        <table class="table" id="otherTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Product</th>
+              <th class="num w-72">Plan</th>
+              <th class="num w-72">Actual</th>
+              <th class="num">Revenue</th>
+              <th class="w-48">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
-<!-- 6 -->
-<section class="card">
-<h2>6) Next Week Activity Plan</h2>
-<button id="nwaAdd" class="btn btn-primary">+ Add Row</button>
-<button id="nwaClear" class="btn btn-secondary">Clear</button>
+      <div class="totals-card">
+        <div class="totals-label">TOTAL REVENUE</div>
+        <div class="totals-value"><span id="otherRevenue">0</span> Rs</div>
+      </div>
+    </section>
 
-<div class="table-wrap">
-<table class="table" id="nwaTable">
-<thead>
-<tr>
-<th>#</th><th>Activity</th>
-<th class="num">Count</th>
-<th>Remarks</th>
-<th></th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-</div>
-</section>
+    <!-- 4) Activities Update -->
+    <section class="card">
+      <div class="card-head subhead">
+        <h2>4) Activities Update</h2>
+        <div class="card-actions">
+          <button type="button" id="actAdd" class="btn btn-primary btn-compact">+ Add Row</button>
+          <button type="button" id="actClear" class="btn btn-secondary btn-compact">Clear</button>
+        </div>
+      </div>
 
-<!-- 7 -->
-<section class="card">
-<h2>7) Special Achievement</h2>
-<textarea id="specialText" rows="4"></textarea>
-</section>
+      <div class="table-wrap">
+        <table class="table" id="actTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Activity</th>
+              <th class="num w-72">Plan</th>
+              <th class="num w-72">Actual</th>
+              <th class="num w-72">NPI Focused</th>
+              <th class="w-48">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
 
-<!-- 8 -->
-<section class="card">
-<h2>8) Activities Photos</h2>
-<button id="photoAdd" class="btn btn-primary">+ Add Row</button>
-<button id="photoClear" class="btn btn-secondary">Clear</button>
+    <!-- 5) Next Week Product Plan -->
+    <section class="card">
+      <div class="card-head subhead">
+        <h2>5) Next Week Plan – Product Plan</h2>
+        <div class="card-actions">
+          <button type="button" id="nwAdd" class="btn btn-primary btn-compact">+ Add Row</button>
+          <button type="button" id="nwClear" class="btn btn-secondary btn-compact">Clear</button>
+        </div>
+      </div>
 
-<table class="table" id="photoTable">
-<thead>
-<tr><th>#</th><th>Activity</th><th>Upload</th><th></th></tr>
-</thead>
-<tbody></tbody>
-</table>
+      <div class="table-wrap">
+        <table class="table" id="nwTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Product</th>
+              <th class="num w-72">Plan</th>
+              <th class="num">Revenue</th>
+              <th class="num">Incentive Opportunity</th>
+              <th class="w-48">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
-<div id="photoPreview" class="photo-grid"></div>
-</section>
+      <div class="totals-card">
+        <div class="totals-label">Your next week incentive opportunity is</div>
+        <div class="totals-value"><span id="nwIncentive">0</span> Rs !!!</div>
+      </div>
+    </section>
 
-<section class="card">
-<button id="btnPdf" class="btn btn-primary btn-full">Generate PDF</button>
-</section>
+    <!-- 6) Next Week Activity Plan -->
+    <section class="card">
+      <div class="card-head subhead">
+        <h2>6) Next Week Activity Plan</h2>
+        <div class="card-actions">
+          <button type="button" id="nwaAdd" class="btn btn-primary btn-compact">+ Add Row</button>
+          <button type="button" id="nwaClear" class="btn btn-secondary btn-compact">Clear</button>
+        </div>
+      </div>
 
-</main>
+      <div class="table-wrap">
+        <table class="table" id="nwaTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Activity</th>
+              <th class="num w-72">Count</th>
+              <th>Remarks</th>
+              <th class="w-48">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
 
-<script src="app.js"></script>
-<script src="pdf.js"></script>
+    <!-- 7) Special Achievement -->
+    <section class="card">
+      <div class="card-head">
+        <h2>7) Special Achievement</h2>
+      </div>
+      <textarea id="specialText" placeholder="Write special achievement..." rows="4"></textarea>
+    </section>
+
+    <!-- 8) Activities Photos (LAST before PDF) -->
+    <section class="card">
+      <div class="card-head subhead">
+        <h2>8) Activities Photos</h2>
+        <div class="card-actions">
+          <button type="button" id="photoAdd" class="btn btn-primary btn-compact">+ Add Row</button>
+          <button type="button" id="photoClear" class="btn btn-secondary btn-compact">Clear</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" id="photoTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Activity</th>
+              <th>Upload Photo</th>
+              <th class="w-48">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div id="photoPreview" class="photo-grid"></div>
+      <div class="tiny-muted">Photos are stored only in your browser memory until you generate the PDF.</div>
+    </section>
+
+    <!-- Generate PDF -->
+    <section class="card">
+      <button type="button" id="btnPdf" class="btn btn-primary btn-full">Generate A4 PDF</button>
+    </section>
+  </main>
+
+  <!-- IMPORTANT: JS at bottom -->
+  <script src="app.js"></script>
+  <script src="pdf.js"></script>
 </body>
 </html>
