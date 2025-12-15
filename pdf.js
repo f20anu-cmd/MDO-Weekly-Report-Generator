@@ -1,172 +1,324 @@
-/* pdf.js */
 (function(){
   const { jsPDF } = window.jspdf;
 
-  function fmtINR(n){
-    const x = Number(n || 0);
-    return x.toLocaleString("en-IN");
-  }
-  function num(v){
-    const x = Number(v);
-    return Number.isFinite(x) ? x : 0;
+  function nowDate(){
+    const d = new Date();
+    return d.toLocaleDateString("en-GB");
   }
 
-  window.generateA4Pdf = function(S){
-    const doc = new jsPDF("p","mm","a4");
-    let y = 14;
+  function header(doc, pageNo){
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("Performance Report", 15, 14);
 
-    doc.setFontSize(16);
-    doc.text("Performance Report", 14, y);
-    y += 8;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Page ${pageNo}`, 195, 14, {align:"right"});
 
+    doc.setDrawColor(200);
+    doc.line(15, 18, 195, 18);
+  }
+
+  function footer(doc){
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text(`Generated on ${nowDate()}`, 15, 290);
+    doc.setTextColor(0);
+  }
+
+  function sectionTitle(doc, t, y){
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
-    doc.text("Weekly Field Performance", 14, y);
-    y += 10;
+    doc.text(t, 15, y);
+    doc.setFont("helvetica", "normal");
+    return y + 6;
+  }
 
-    // 1) MDO
-    doc.setFontSize(13);
-    doc.text("1) MDO Information", 14, y); y += 6;
+  function ensureSpace(doc, y, pageNo, needed=18){
+    if(y + needed > 280){
+      doc.addPage();
+      pageNo += 1;
+      header(doc, pageNo);
+      footer(doc);
+      y = 28;
+    }
+    return { y, pageNo };
+  }
 
-    doc.setFontSize(10);
-    const mdoRows = [
-      ["Name", document.getElementById("mdoName").value || ""],
-      ["HQ", document.getElementById("hq").value || ""],
-      ["Region", document.getElementById("region").value || ""],
-      ["Territory", document.getElementById("territory").value || ""],
-      ["Month", document.getElementById("month").value || ""],
-      ["Week", document.getElementById("week").value || ""],
-    ];
+  function autoTable(doc, head, body, startY){
     doc.autoTable({
-      startY: y,
-      head: [["Field", "Value"]],
-      body: mdoRows,
-      theme: "grid",
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [13,116,200] },
-      margin: { left: 14, right: 14 }
+      head: [head],
+      body,
+      startY,
+      margin: { left: 15, right: 15 },
+      styles: { fontSize: 9, cellPadding: 3, valign: "middle" },
+      headStyles: { fillColor: [13,116,200], textColor: 255, fontStyle:"bold" },
+      alternateRowStyles: { fillColor: [250,250,250] }
     });
-    y = doc.lastAutoTable.finalY + 8;
+    return doc.lastAutoTable.finalY + 8;
+  }
 
-    // Helper to add tables safely
-    function addSectionTable(title, head, body, afterGap=8){
-      doc.setFontSize(13);
-      doc.text(title, 14, y);
-      y += 4;
-      doc.autoTable({
-        startY: y,
-        head: [head],
-        body,
-        theme: "grid",
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [13,116,200] },
-        margin: { left: 14, right: 14 },
-      });
-      y = doc.lastAutoTable.finalY + afterGap;
-      if (y > 260){ doc.addPage(); y = 14; }
+  function drawHighlight(doc, y, leftText, rightText){
+    doc.setFillColor(224, 242, 254);
+    doc.roundedRect(15, y, 180, 14, 3, 3, "F");
+
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(10);
+    doc.text(leftText, 18, y+9);
+    doc.text(rightText, 190, y+9, {align:"right"});
+    doc.setFont("helvetica","normal");
+
+    return y + 18;
+  }
+
+  // FIXED photo flow: prevents overlap with next section
+  function addPhotosFlow(doc, title, photos, y, pageNo){
+    if(!photos.length){
+      ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
+      y = sectionTitle(doc, title, y);
+      doc.setFontSize(10);
+      doc.text("No photos uploaded.", 15, y+6);
+      return { y: y+20, pageNo };
     }
 
-    // 2) NPI
-    let npiEarned = 0;
-    const npiBody = (S.npiRows||[]).map((r, i)=>{
-      const rate = (S.npiProducts||[]).find(p=>p.name===r.product)?.rate || 0;
-      const opp = num(r.plan) * num(rate);
-      const earned = num(r.actual) * num(rate);
-      npiEarned += earned;
-      return [String(i+1), r.product||"", String(r.plan||""), String(r.actual||""), fmtINR(opp), fmtINR(earned)];
-    });
-    addSectionTable(
-      "2) NPI Performance Update",
-      ["#", "Product", "Plan", "Actual", "Opportunity", "Earned"],
-      npiBody.length ? npiBody : [["", "", "", "", "", ""]]
-    );
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 24));
+    y = sectionTitle(doc, title, y);
+    y += 6;
 
-    doc.setFontSize(11);
-    doc.text(`Congratulations you have earned ${fmtINR(npiEarned)} Rs !!!`, 14, y);
-    y += 10;
+    const xStart = 15;
+    const imgW = 80;
+    const imgH = 55;
+    const gapX = 10;
+    const gapY = 22;
 
-    // 3) Other
-    let otherRevenue = 0;
-    const otherBody = (S.otherRows||[]).map((r,i)=>{
-      const rate = (S.otherProducts||[]).find(p=>p.name===r.product)?.revenuePerUnit || 0;
-      const rev = num(r.actual) * num(rate);
-      otherRevenue += rev;
-      return [String(i+1), r.product||"", String(r.plan||""), String(r.actual||""), fmtINR(rev)];
-    });
-    addSectionTable(
-      "3) Other Product Performance Update",
-      ["#", "Product", "Plan", "Actual", "Revenue"],
-      otherBody.length ? otherBody : [["", "", "", "", ""]]
-    );
-    doc.setFontSize(11);
-    doc.text(`TOTAL REVENUE EARNED: ${fmtINR(otherRevenue)} Rs`, 14, y);
-    y += 10;
+    let x = xStart;
+    let col = 0;
 
-    // 4) Activities
-    const actBody = (S.actRows||[]).map((r,i)=>[
-      String(i+1), r.activity||"", String(r.plan||""), String(r.actual||""), String(r.npiFocused||"")
-    ]);
-    addSectionTable(
-      "4) Activities Update",
-      ["#", "Activity", "Plan", "Actual", "NPI Focused"],
-      actBody.length ? actBody : [["", "", "", "", ""]]
-    );
+    for (let i = 0; i < photos.length; i++) {
+      const p = photos[i];
 
-    // 5) Next week product plan
-    let nwIncentive = 0;
-    const nwBody = (S.nwRows||[]).map((r,i)=>{
-      const npiRate = (S.npiProducts||[]).find(p=>p.name===r.product)?.rate || 0;
-      const otherRate = (S.otherProducts||[]).find(p=>p.name===r.product)?.revenuePerUnit || 0;
-      const revenue = num(r.plan)*num(otherRate);
-      const incentive = num(r.plan)*num(npiRate);
-      nwIncentive += incentive;
-      return [String(i+1), r.product||"", String(r.plan||""), fmtINR(revenue), fmtINR(incentive)];
-    });
-    addSectionTable(
-      "5) Next Week Plan - Product Plan",
-      ["#", "Product", "Plan", "Revenue", "Incentive Opportunity"],
-      nwBody.length ? nwBody : [["", "", "", "", ""]]
-    );
-    doc.setFontSize(11);
-    doc.text(`Your next week incentive opportunity is ${fmtINR(nwIncentive)} Rs !!!`, 14, y);
-    y += 10;
+      ({y, pageNo} = ensureSpace(doc, y, pageNo, imgH + 18));
 
-    // 6) Next week activity plan
-    const nwaBody = (S.nwaRows||[]).map((r,i)=>[
-      String(i+1), r.activity||"", String(r.count||""), r.remarks||""
-    ]);
-    addSectionTable(
-      "6) Next Week Activity Plan",
-      ["#", "Activity", "Count", "Remarks"],
-      nwaBody.length ? nwaBody : [["", "", "", ""]]
-    );
+      try { doc.addImage(p.dataUrl, "JPEG", x, y, imgW, imgH); } catch(e){}
 
-    // 7) Special achievement
-    const special = (document.getElementById("specialText").value || "").trim();
-    doc.setFontSize(13);
-    doc.text("7) Special Achievement", 14, y); y += 6;
-    doc.setFontSize(10);
-    const lines = doc.splitTextToSize(special || "-", 180);
-    doc.text(lines, 14, y);
-    y += (lines.length * 5) + 8;
-    if (y > 260){ doc.addPage(); y = 14; }
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(90);
+      doc.text((p.activity || "Activity"), x, y + imgH + 6);
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
 
-    // 8) Photos (LAST) - no overlap, auto page breaks
-    if ((S.photos||[]).some(p=>p.dataUrl)){
-      doc.setFontSize(13);
-      doc.text("8) Activities Photos", 14, y);
-      y += 6;
+      col++;
 
-      for (const p of (S.photos||[])){
-        if (!p.dataUrl) continue;
-        if (y > 240){ doc.addPage(); y = 14; }
-        doc.setFontSize(10);
-        doc.text(p.activity || "Photo", 14, y);
-        y += 4;
-        doc.addImage(p.dataUrl, "JPEG", 14, y, 60, 45);
-        y += 55;
+      if (col === 2) {
+        col = 0;
+        x = xStart;
+        y += imgH + gapY;
+      } else {
+        x += imgW + gapX;
       }
     }
 
-    doc.save("Performance_Report.pdf");
+    // reserve extra space after last row
+    y += imgH + 12;
+    return { y, pageNo };
+  }
+
+  window.generateA4Pdf = function(payload){
+    const { State, typeLabel, rs } = payload;
+
+    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"portrait"});
+    let pageNo = 1;
+
+    header(doc, pageNo);
+    footer(doc);
+
+    let y = 28;
+
+    // 1) MDO Information
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 30));
+    y = sectionTitle(doc, "1) MDO Information", y);
+
+    doc.setFontSize(10);
+    const items = [
+      ["Name", State.mdoName || ""],
+      ["HQ", State.hq || ""],
+      ["Region", State.region || ""],
+      ["Territory", State.territory || ""],
+      ["Month", State.month || ""],
+      ["Week", State.week ? `Week ${State.week}` : ""],
+    ];
+    for(const [k,v] of items){
+      ({y, pageNo} = ensureSpace(doc, y, pageNo, 8));
+      doc.setFont("helvetica","bold");
+      doc.text(`${k}:`, 15, y);
+      doc.setFont("helvetica","normal");
+      doc.text(String(v||""), 55, y);
+      y += 7;
+    }
+    y += 4;
+
+    // 2) NPI Performance Update
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
+    y = sectionTitle(doc, "2) NPI Performance Update", y);
+
+    let oppTotal = 0, earnedTotal = 0;
+    const npiBody = (State.npiRows||[]).map((r,i)=>{
+      oppTotal += (r.opportunity || 0);
+      earnedTotal += (r.earned || 0);
+      return [
+        String(i+1),
+        r.product || "",
+        String(r.plan || ""),
+        String(r.actual || ""),
+        `${rs(r.opportunity||0)} Rs`,
+        `${rs(r.earned||0)} Rs`
+      ];
+    });
+
+    y = autoTable(doc,
+      ["#", "Product", "Plan (L/Kg)", "Actual (L/Kg)", "Incentive Opportunity", "Incentive Earned"],
+      npiBody,
+      y
+    );
+
+    const lose = Math.max(0, oppTotal - earnedTotal);
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+    y = drawHighlight(doc, y, "Congratulations you have earned", `${rs(earnedTotal)} Rs !!!`);
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+    y = drawHighlight(doc, y, "You lose", `${rs(lose)} Rs`);
+
+    // 3) Other Product Performance Update
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
+    y = sectionTitle(doc, "3) Other Product Performance Update", y);
+
+    let otherTotal = 0;
+    const otherBody = (State.otherRows||[]).map((r,i)=>{
+      otherTotal += (r.revenue || 0);
+      return [
+        String(i+1),
+        r.product || "",
+        String(r.plan || ""),
+        String(r.actual || ""),
+        `${rs(r.revenue||0)} Rs`
+      ];
+    });
+
+    y = autoTable(doc,
+      ["#", "Product", "Plan (L/Kg)", "Actual (L/Kg)", "Total Revenue"],
+      otherBody,
+      y
+    );
+
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+    y = drawHighlight(doc, y, "TOTAL REVENUE EARNED", `${rs(otherTotal)} Rs`);
+
+    // 4) Activities Update
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
+    y = sectionTitle(doc, "4) Activities Update", y);
+
+    let tp=0, ta=0, tn=0;
+    const actBody = (State.actRows||[]).map((r,i)=>{
+      tp += Number(r.planNo||0);
+      ta += Number(r.actualNo||0);
+      tn += Number(r.npiNo||0);
+      return [
+        String(i+1),
+        typeLabel(r.typeObj) || "",
+        String(r.planNo || ""),
+        String(r.actualNo || ""),
+        String(r.npiNo || "")
+      ];
+    });
+
+    y = autoTable(doc,
+      ["#", "Activity", "Plan No", "Actual No", "NPI Focused"],
+      actBody,
+      y
+    );
+
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 10));
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(10);
+    doc.text(`TOTAL  Plan: ${tp}   |   Actual: ${ta}   |   NPI Focused: ${tn}`, 15, y);
+    doc.setFont("helvetica","normal");
+    y += 10;
+
+    // 5) Activities Photos
+    const actPhotos = (State.photoRows||[]).filter(p=>p.dataUrl).slice(0,16);
+    ({y, pageNo} = addPhotosFlow(doc, "5) Activities Photos", actPhotos, y, pageNo));
+
+    // 6) Next Week Plan - Product Plan
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
+    y = sectionTitle(doc, "6) Next Week Plan - Product Plan", y);
+
+    let nwRev=0, nwOpp=0;
+    const nwBody = (State.nwRows||[]).map((r,i)=>{
+      nwRev += (r.revenue||0);
+      nwOpp += (r.incentiveEarned||0);
+      return [
+        String(i+1),
+        r.product || "",
+        String(r.plan || ""),
+        String(r.actual || ""),
+        `${rs(r.revenue||0)} Rs`,
+        `${rs(r.incentiveEarned||0)} Rs`
+      ];
+    });
+
+    y = autoTable(doc,
+      ["#", "Product", "Plan (L/Kg)", "Actual (L/Kg)", "Total Revenue", "Total Incentive Earned"],
+      nwBody,
+      y
+    );
+
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+    y = drawHighlight(doc, y, "Your next week incentive opportunity is", `${rs(nwOpp)} Rs !!!`);
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 18));
+    y = drawHighlight(doc, y, "TOTAL REVENUE", `${rs(nwRev)} Rs`);
+
+    // 7) Activities Plan
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
+    y = sectionTitle(doc, "7) Activities Plan", y);
+
+    const apBody = (State.apRows||[]).map((r,i)=>{
+      const vCount = (r.villageNo ?? 0);
+      return [
+        String(i+1),
+        typeLabel(r.typeObj) || "",
+        String(r.planNo || ""),
+        String(r.villages || ""),
+        String(vCount)
+      ];
+    });
+
+    y = autoTable(doc,
+      ["#", "Activity", "Plan No", "Village Names", "Village No"],
+      apBody,
+      y
+    );
+
+    // 8) Special Achievement
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, 20));
+    y = sectionTitle(doc, "8) Special Achievement", y);
+
+    doc.setFont("helvetica","bold");
+    doc.setFontSize(10);
+    doc.text("Description:", 15, y);
+    y += 6;
+
+    doc.setFont("helvetica","normal");
+    doc.setFontSize(9);
+    const desc = (State.spDesc || "—").trim();
+    const wrapped = doc.splitTextToSize(desc, 180);
+    ({y, pageNo} = ensureSpace(doc, y, pageNo, wrapped.length * 5 + 10));
+    doc.text(wrapped, 15, y);
+    y += (wrapped.length * 5) + 6;
+
+    const spPhotos = (State.spPhotoRows||[]).filter(p=>p.dataUrl).slice(0,4);
+    ({y, pageNo} = addPhotosFlow(doc, "Special Achievement Photos", spPhotos, y, pageNo));
+
+    const safeName = (State.mdoName || "Report").replace(/[^\w]+/g, "_");
+    doc.save(`Performance_Report_${safeName}.pdf`);
   };
 })();
