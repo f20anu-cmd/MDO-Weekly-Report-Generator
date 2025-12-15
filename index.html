@@ -21,138 +21,245 @@
     <div class="brand-title">Performance Report</div>
     <div class="brand-sub">Weekly Field Performance</div>
   </div>
-  <button id="btnClearAll" class="btn danger">Clear All</button>
+  <button id="btnClearAll" class="btn btn-outline danger">Clear All</button>
 </header>
 
 <main class="container">
 
 <div id="fatalError" class="fatal hidden"></div>
 
-<!-- 1) MDO DETAILS -->
+<!-- 1) MDO INFORMATION -->
 <section class="card">
-<h2>1) MDO Information</h2>
-<div class="grid-2">
-  <div class="field"><label>Name</label><input id="mdoName"></div>
-  <div class="field"><label>HQ</label><input id="hq"></div>
-  <div class="field"><label>Region</label><select id="region"></select></div>
-  <div class="field"><label>Territory</label><select id="territory"></select></div>
-  <div class="field"><label>Month</label><select id="month"></select></div>
-  <div class="field"><label>Week</label><select id="week"></select></div>
-</div>
+  <h2>1) MDO Information</h2>
+  <div class="grid-2">
+    <div class="field"><label>Name</label><input id="mdoName"></div>
+    <div class="field"><label>HQ</label><input id="hq"></div>
+    <div class="field"><label>Region</label><select id="region"></select></div>
+    <div class="field"><label>Territory</label><select id="territory"></select></div>
+    <div class="field"><label>Month</label><select id="month"></select></div>
+    <div class="field"><label>Week</label><select id="week"></select></div>
+  </div>
 </section>
 
-<!-- 2) NPI -->
+<!-- 2) NPI PERFORMANCE -->
 <section class="card">
-<h2>NPI Performance Update</h2>
-<div class="actions">
-  <button id="npiAdd" class="btn">Add Row</button>
-  <button id="npiClear" class="btn danger">Clear</button>
-</div>
-<table class="table" id="npiTable">
-<thead>
-<tr><th>#</th><th>Product</th><th>Plan</th><th>Actual</th><th>Incentive</th><th>Action</th></tr>
-</thead>
-<tbody></tbody>
-</table>
-<div class="highlight">Congratulations! You earned <span id="npiTotal">0</span> Rs</div>
+  <div class="section-head">
+    <h2>NPI Performance Update</h2>
+    <div class="actions">
+      <button id="npiAdd" class="btn btn-outline">Add Row</button>
+      <button id="npiClear" class="btn btn-outline danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="npiTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Product</th>
+          <th class="num">Plan (L/Kg)</th>
+          <th class="num">Actual (L/Kg)</th>
+          <th class="num">Total Incentive Earned (Rs)</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="flash">
+    Congratulations! You earned <b><span id="npiTotalIncentive">0</span> Rs</b>
+  </div>
 </section>
 
-<!-- 3) OTHER PRODUCTS -->
+<!-- 3) OTHER PRODUCT PERFORMANCE -->
 <section class="card">
-<h2>Other Product Performance</h2>
-<div class="actions">
-<button id="otherAdd" class="btn">Add Row</button>
-<button id="otherClear" class="btn danger">Clear</button>
-</div>
-<table class="table" id="otherTable">
-<thead>
-<tr><th>#</th><th>Product</th><th>Plan</th><th>Actual</th><th>Revenue</th><th>Action</th></tr>
-</thead>
-<tbody></tbody>
-</table>
-<div class="summary">Total Revenue: <span id="otherTotal">0</span> Rs</div>
+  <div class="section-head">
+    <h2>Other Product Performance</h2>
+    <div class="actions">
+      <button id="otherAdd" class="btn btn-outline">Add Row</button>
+      <button id="otherClear" class="btn btn-outline danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="otherTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Product</th>
+          <th class="num">Plan (L/Kg)</th>
+          <th class="num">Actual (L/Kg)</th>
+          <th class="num">Total Revenue (Rs)</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="summary">
+    Total Revenue Earned: <b><span id="otherTotalRevenue">0</span> Rs</b>
+  </div>
 </section>
 
-<!-- 4) ACTIVITIES -->
+<!-- 4) ACTIVITIES UPDATE -->
 <section class="card">
-<h2>Activities Update</h2>
-<div class="actions">
-<button id="actAdd" class="btn">Add Row</button>
-<button id="actClear" class="btn danger">Clear</button>
-</div>
-<table class="table" id="activityTable">
-<thead>
-<tr><th>#</th><th>Activity</th><th>Plan</th><th>Actual</th><th>NPI</th><th>Action</th></tr>
-</thead>
-<tbody></tbody>
-<tfoot>
-<tr><th colspan="2">TOTAL</th><th id="actP">0</th><th id="actA">0</th><th id="actN">0</th><th></th></tr>
-</tfoot>
-</table>
+  <div class="section-head">
+    <h2>Activities Update</h2>
+    <div class="actions">
+      <button id="actAdd" class="btn btn-outline">Add Row</button>
+      <button id="actClear" class="btn btn-outline danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="activityTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Activity</th>
+          <th class="num">Plan No</th>
+          <th class="num">Actual No</th>
+          <th class="num">NPI Focused</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr>
+          <th colspan="2">TOTAL</th>
+          <th id="actPlanTotal">0</th>
+          <th id="actActualTotal">0</th>
+          <th id="actNpiTotal">0</th>
+          <th></th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
 </section>
 
-<!-- 5) PHOTOS -->
+<!-- 5) ACTIVITIES PHOTOS -->
 <section class="card">
-<h2>Activities Photos</h2>
-<div class="actions">
-<button id="photoAdd" class="btn">Add Row</button>
-<button id="photoClear" class="btn danger">Clear</button>
-</div>
-<table class="table" id="photoTable">
-<thead>
-<tr><th>#</th><th>Activity</th><th>Photo</th><th>Action</th></tr>
-</thead>
-<tbody></tbody>
-</table>
-<div class="photo-grid" id="photoPreview"></div>
+  <div class="section-head">
+    <h2>Activities Photos</h2>
+    <div class="actions">
+      <button id="photoAdd" class="btn btn-outline">Add Row</button>
+      <button id="photoClear" class="btn btn-outline danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="photoTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Activity</th>
+          <th>Photo Upload</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="photo-grid" id="photoPreviewGrid"></div>
 </section>
 
-<!-- 6) NEXT WEEK -->
+<!-- 6) NEXT WEEK PLAN -->
 <section class="card">
-<h2>Next Week Product Plan</h2>
-<div class="actions">
-<button id="nwAdd" class="btn">Add Row</button>
-<button id="nwClear" class="btn danger">Clear</button>
-</div>
-<table class="table" id="nwTable">
-<thead>
-<tr><th>#</th><th>Product</th><th>Plan</th><th>Actual</th><th>Revenue</th><th>Incentive</th><th>Action</th></tr>
-</thead>
-<tbody></tbody>
-</table>
-<div class="summary">Revenue: <span id="nwRev">0</span> Rs | Incentive: <span id="nwInc">0</span> Rs</div>
+  <div class="section-head">
+    <h2>Next Week Plan – Product Plan</h2>
+    <div class="actions">
+      <button id="nwAdd" class="btn btn-outline">Add Row</button>
+      <button id="nwClear" class="btn btn-outline danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="nextWeekTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Product</th>
+          <th class="num">Plan (L/Kg)</th>
+          <th class="num">Actual (L/Kg)</th>
+          <th class="num">Total Revenue</th>
+          <th class="num">Total Incentive</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="dual-summary">
+    <div class="summary">TOTAL REVENUE: <b><span id="nwTotalRevenue">0</span> Rs</b></div>
+    <div class="flash">Next week incentive opportunity: <b><span id="nwTotalIncentive">0</span> Rs</b></div>
+  </div>
 </section>
 
 <!-- 7) ACTIVITIES PLAN -->
 <section class="card">
-<h2>Activities Plan</h2>
-<div class="actions">
-<button id="apAdd" class="btn">Add Row</button>
-<button id="apClear" class="btn danger">Clear</button>
-</div>
-<table class="table" id="apTable">
-<thead>
-<tr><th>#</th><th>Activity</th><th>Plan</th><th>Villages</th><th>Village No</th><th>Action</th></tr>
-</thead>
-<tbody></tbody>
-</table>
+  <div class="section-head">
+    <h2>Activities Plan</h2>
+    <div class="actions">
+      <button id="apAdd" class="btn btn-outline">Add Row</button>
+      <button id="apClear" class="btn btn-outline danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="activityPlanTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Activity</th>
+          <th class="num">Plan No</th>
+          <th>Village Names</th>
+          <th class="num">Village No</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </section>
 
-<!-- 8) SPECIAL -->
+<!-- 8) SPECIAL ACHIEVEMENT -->
 <section class="card">
-<h2>Special Achievement</h2>
-<textarea id="spDesc" rows="4" placeholder="Describe achievement"></textarea>
+  <h2>Special Achievement</h2>
 
-<div class="actions">
-<button id="spPhotoAdd" class="btn">Add Photo</button>
-<button id="spPhotoClear" class="btn danger">Clear</button>
-</div>
-<div class="photo-grid" id="spPhotos"></div>
+  <textarea id="spDesc" rows="4" placeholder="Describe your special achievement..."></textarea>
+
+  <div class="section-head">
+    <h3>Special Achievement Photos</h3>
+    <div class="actions">
+      <button id="spPhotoAdd" class="btn btn-outline">Add Row</button>
+      <button id="spPhotoClear" class="btn btn-outline danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table" id="spPhotoTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Activity</th>
+          <th>Photo Upload</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="photo-grid" id="spPhotoPreviewGrid"></div>
 </section>
 
-<!-- PDF -->
+<!-- PDF BUTTON -->
 <section class="card right">
-<button id="btnPdf" class="btn primary">Generate A4 PDF</button>
+  <button id="btnPdf" class="btn btn-primary">Generate A4 PDF</button>
 </section>
 
 </main>
