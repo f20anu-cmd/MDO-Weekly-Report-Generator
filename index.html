@@ -1,293 +1,331 @@
-:root{
-  --blue:#0d74c8;
-  --bg:#eef3f8;
-  --card:#ffffff;
-  --text:#0f172a;
-  --muted:#64748b;
-  --line:#e2e8f0;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Performance Report</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  --tile:#f8fbff;
-  --accent:#e0f2fe;
-}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-*{ box-sizing:border-box; }
-body{
-  margin:0;
-  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background:var(--bg);
-  color:var(--text);
-}
+  <!-- XLSX -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" crossorigin="anonymous"></script>
 
-/* Header */
-.app-header{
-  background:var(--blue);
-  color:#fff;
-  padding:16px 20px;
-}
-.app-header__inner{
-  max-width:1200px;
-  margin:0 auto;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:16px;
-}
-.app-title{ font-size:22px; font-weight:900; }
-.app-subtitle{ font-size:13px; opacity:.92; margin-top:4px; font-weight:700; }
+  <!-- PDF -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 
-.app-container{
-  max-width:1200px;
-  margin:18px auto 40px;
-  padding:0 16px;
-}
+  <!-- IMPORTANT: your file name is style.css (no s) -->
+  <link rel="stylesheet" href="style.css?v=7" />
+</head>
 
-.card{
-  background:var(--card);
-  border-radius:16px;
-  padding:18px;
-  margin:16px 0;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-  border: 1px solid rgba(226,232,240,.9);
-}
+<body>
+  <header class="app-header">
+    <div class="app-header__inner">
+      <div>
+        <div class="app-title">Performance Report</div>
+        <div class="app-subtitle">Weekly Field Performance</div>
+      </div>
+      <div class="header-actions">
+        <button id="btnClearAll" class="btn btn-secondary btn-compact">Clear All</button>
+      </div>
+    </div>
+  </header>
 
-.card-head{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  margin-bottom:12px;
-}
-.card-head h2{
-  margin:0;
-  font-size:18px;
-  font-weight:900;
-}
-.subhead{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  margin-top:14px;
-}
-.subhead h3{
-  margin:0;
-  font-size:14px;
-  font-weight:900;
-}
+  <main class="app-container">
+    <div id="fatalError" class="fatal hidden"></div>
 
-.card-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+    <!-- 1) MDO INFORMATION -->
+    <section class="card">
+      <div class="card-head">
+        <h2>1) MDO Information</h2>
+      </div>
 
-.form-grid{
-  display:grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap:14px;
-}
-@media (max-width: 900px){
-  .form-grid{ grid-template-columns: 1fr; }
-  .app-header__inner{ flex-direction:column; align-items:flex-start; }
-}
+      <div class="form-grid">
+        <div class="field">
+          <label>Name</label>
+          <input id="mdoName" type="text" placeholder="Enter name" />
+        </div>
 
-.field{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
-label{ font-size:12px; font-weight:800; color:var(--muted); }
+        <div class="field">
+          <label>HQ</label>
+          <input id="hq" type="text" placeholder="Enter HQ" />
+        </div>
 
-input, select, textarea{
-  width:100%;
-  padding:12px 12px;
-  border:1px solid var(--line);
-  border-radius:12px;
-  font-size:14px;
-  outline:none;
-  background:#fff;
-}
-textarea{ resize:vertical; }
+        <div class="field">
+          <label>Region</label>
+          <select id="region"></select>
+        </div>
 
-.btn{
-  border:none;
-  border-radius:12px;
-  padding:12px 14px;
-  cursor:pointer;
-  font-weight:900;
-  font-size:14px;
-}
-.btn-compact{ padding:10px 12px; border-radius:10px; }
-.btn-wide{ min-width:140px; }
+        <div class="field">
+          <label>Territory</label>
+          <select id="territory"></select>
+        </div>
 
-.btn-primary{ background:var(--blue); color:#fff; }
-.btn-primary:hover{ filter: brightness(0.95); }
+        <div class="field">
+          <label>Month</label>
+          <select id="month"></select>
+        </div>
 
-.btn-secondary{
-  background:#dbe7f5;
-  color:#0b2f6b;
-}
-.btn-secondary:hover{ filter: brightness(0.98); }
+        <div class="field">
+          <label>Week</label>
+          <select id="week"></select>
+        </div>
+      </div>
+    </section>
 
-.btn-full{
-  width:100%;
-  padding:16px 14px;
-  font-size:16px;
-  border-radius:14px;
-}
+    <!-- 2) NPI PERFORMANCE UPDATE -->
+    <section class="card">
+      <div class="card-head">
+        <h2>2) NPI Performance Update</h2>
+        <div class="card-actions">
+          <button id="npiAdd" class="btn btn-primary btn-wide">+ Add Row</button>
+          <button id="npiClear" class="btn btn-secondary btn-wide">Clear</button>
+        </div>
+      </div>
 
-.table-wrap{
-  border:1px solid var(--line);
-  border-radius:14px;
-  overflow:auto;
-}
-.table{
-  width:100%;
-  border-collapse:collapse;
-  min-width: 1100px;
-}
-.table th, .table td{
-  padding:12px 10px;
-  border-bottom:1px solid var(--line);
-  vertical-align:middle;
-}
-.table thead th{
-  background: var(--blue);
-  color:#fff;
-  font-size:12px;
-  font-weight:900;
-  text-align:left;
-}
-.table tbody tr:nth-child(even){
-  background:#fafafa;
-}
-.table .num{ text-align:right; font-variant-numeric: tabular-nums; }
-.w-48{ width:48px; }
-.w-72{ width:72px; }
+      <div class="table-wrap">
+        <table class="table" id="npiTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Product</th>
+              <th class="num">Plan (L/Kg)</th>
+              <th class="num">Actual (L/Kg)</th>
+              <th class="num">Total Incentive Opportunity (Rs)</th>
+              <th class="num">Total Incentive Earned (Rs)</th>
+              <th class="w-72">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
-.tfoot{
-  background:#f1f5f9;
-  font-weight:900;
-}
+      <div class="dual-tiles">
+        <div class="tile tile-accent">
+          <div class="tile-label">CONGRATULATIONS YOU HAVE EARNED</div>
+          <div class="tile-value"><span id="npiTotalEarned">0</span> Rs !!!</div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">YOU LOSE</div>
+          <div class="tile-value"><span id="npiTotalLose">0</span> Rs</div>
+        </div>
+      </div>
+    </section>
 
-.totals-card{
-  margin-top:12px;
-  border-radius:14px;
-  padding:14px;
-  background: #ffffff;
-  border:1px solid var(--line);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-}
-.totals-label{
-  font-size:12px;
-  font-weight:950;
-  letter-spacing:.7px;
-  color:var(--muted);
-}
-.totals-value{
-  font-size:18px;
-  font-weight:950;
-  color:#0f172a;
-}
+    <!-- 3) OTHER PRODUCT PERFORMANCE UPDATE -->
+    <section class="card">
+      <div class="card-head">
+        <h2>3) Other Product Performance Update</h2>
+        <div class="card-actions">
+          <button id="otherAdd" class="btn btn-primary btn-wide">+ Add Row</button>
+          <button id="otherClear" class="btn btn-secondary btn-wide">Clear</button>
+        </div>
+      </div>
 
-.dual-tiles{
-  margin-top:12px;
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap:12px;
-}
-@media (max-width: 900px){
-  .dual-tiles{ grid-template-columns: 1fr; }
-}
-.tile{
-  border-radius:14px;
-  padding:14px;
-  background: var(--tile);
-  border:1px solid var(--line);
-}
-.tile-accent{
-  background: linear-gradient(135deg, var(--accent), #dbeafe);
-  border:1px solid rgba(13,116,200,.18);
-}
-.tile-label{
-  font-size:12px;
-  font-weight:950;
-  letter-spacing:.7px;
-  color:var(--muted);
-}
-.tile-value{
-  margin-top:8px;
-  font-size:18px;
-  font-weight:950;
-  color:#0f172a;
-}
+      <div class="table-wrap">
+        <table class="table" id="otherTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Product</th>
+              <th class="num">Plan (L/Kg)</th>
+              <th class="num">Actual (L/Kg)</th>
+              <th class="num">Total Revenue (Rs)</th>
+              <th class="w-72">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
-.muted{
-  color:var(--muted);
-  font-size:12px;
-  font-weight:700;
-  margin:8px 0 10px;
-}
-.tiny-muted{
-  margin-top:10px;
-  color:var(--muted);
-  font-size:12px;
-  font-weight:700;
-  text-align:center;
-}
+      <div class="totals-card">
+        <div class="totals-label">TOTAL REVENUE EARNED</div>
+        <div class="totals-value"><span id="otherTotalRevenue">0</span> Rs</div>
+      </div>
+    </section>
 
-.photo-grid{
-  margin-top:12px;
-  display:grid;
-  grid-template-columns: repeat(4, minmax(0,1fr));
-  gap:10px;
-}
-.photo-grid.small{ grid-template-columns: repeat(4, minmax(0,1fr)); }
-@media (max-width: 980px){
-  .photo-grid{ grid-template-columns: repeat(3, 1fr); }
-}
-@media (max-width: 650px){
-  .photo-grid{ grid-template-columns: repeat(2, 1fr); }
-}
-.photo-card{
-  border:1px solid var(--line);
-  border-radius:14px;
-  overflow:hidden;
-  background:#fff;
-}
-.photo-card img{
-  width:100%;
-  height:140px;
-  object-fit:cover;
-  display:block;
-}
-.photo-meta{
-  padding:8px 10px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:8px;
-}
-.photo-caption{
-  font-size:12px;
-  font-weight:900;
-  color:var(--muted);
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
+    <!-- 4) ACTIVITIES UPDATE -->
+    <section class="card">
+      <div class="card-head">
+        <h2>4) Activities Update</h2>
+        <div class="card-actions">
+          <button id="actAdd" class="btn btn-primary btn-wide">+ Add Row</button>
+          <button id="actClear" class="btn btn-secondary btn-wide">Clear</button>
+        </div>
+      </div>
 
-.iconbtn{
-  border:1px solid var(--line);
-  background:#fff;
-  padding:8px 10px;
-  border-radius:10px;
-  cursor:pointer;
-  font-weight:900;
-}
+      <div class="table-wrap">
+        <table class="table" id="activityTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Activity</th>
+              <th class="num">Plan No</th>
+              <th class="num">Actual No</th>
+              <th class="num">NPI Focused Activity No</th>
+              <th class="w-72">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot>
+            <tr>
+              <th colspan="2" class="tfoot">TOTAL</th>
+              <th class="num tfoot" id="actPlanTotal">0</th>
+              <th class="num tfoot" id="actActualTotal">0</th>
+              <th class="num tfoot" id="actNpiTotal">0</th>
+              <th class="tfoot"></th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
 
-.fatal{
-  background:#fff1f2;
-  border:1px solid #fecaca;
-  color:#7f1d1d;
-  padding:14px 16px;
-  border-radius:14px;
-  font-weight:900;
-  margin:14px 0;
-}
-.hidden{ display:none; }
+    <!-- 5) ACTIVITIES PHOTOS -->
+    <section class="card">
+      <div class="card-head">
+        <h2>5) Activities Photos</h2>
+        <div class="card-actions">
+          <button id="photoAdd" class="btn btn-primary btn-wide">+ Add Row</button>
+          <button id="photoClear" class="btn btn-secondary btn-wide">Clear</button>
+        </div>
+      </div>
+
+      <div class="muted">Upload photos (compressed in-browser). Nothing is stored on server.</div>
+
+      <div class="table-wrap">
+        <table class="table" id="photoTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Activity</th>
+              <th>Photo Upload</th>
+              <th class="w-72">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="photo-grid" id="photoPreviewGrid"></div>
+    </section>
+
+    <!-- 6) NEXT WEEK PLAN - PRODUCT PLAN -->
+    <section class="card">
+      <div class="card-head">
+        <h2>6) Next Week Plan - Product Plan</h2>
+        <div class="card-actions">
+          <button id="nwAdd" class="btn btn-primary btn-wide">+ Add Row</button>
+          <button id="nwClear" class="btn btn-secondary btn-wide">Clear</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" id="nextWeekTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Product</th>
+              <th class="num">Plan (L/Kg)</th>
+              <th class="num">Actual (L/Kg)</th>
+              <th class="num">Total Revenue (Rs)</th>
+              <th class="num">Total Incentive Earned (Rs)</th>
+              <th class="w-72">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- ORDER AS YOU CONFIRMED -->
+      <div class="dual-tiles">
+        <div class="tile tile-accent">
+          <div class="tile-label">YOUR NEXT WEEK INCENTIVE OPPORTUNITY</div>
+          <div class="tile-value"><span id="nwOpp">0</span> Rs !!!</div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">TOTAL REVENUE</div>
+          <div class="tile-value"><span id="nwRevenue">0</span> Rs</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7) ACTIVITIES PLAN -->
+    <section class="card">
+      <div class="card-head">
+        <h2>7) Activities Plan</h2>
+        <div class="card-actions">
+          <button id="apAdd" class="btn btn-primary btn-wide">+ Add Row</button>
+          <button id="apClear" class="btn btn-secondary btn-wide">Clear</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" id="activityPlanTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Activity</th>
+              <th class="num">Plan No</th>
+              <th>Village Names (comma separated)</th>
+              <th class="num">Village No</th>
+              <th class="w-72">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 8) SPECIAL ACHIEVEMENT -->
+    <section class="card">
+      <div class="card-head">
+        <h2>8) Special Achievement</h2>
+        <div class="card-actions">
+          <button id="spClearAll" class="btn btn-secondary btn-wide">Clear</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Description</label>
+        <textarea id="spDesc" rows="4" placeholder="Write your special achievement..."></textarea>
+      </div>
+
+      <div class="subhead">
+        <h3>Special Achievement Photos</h3>
+        <div class="card-actions">
+          <button id="spPhotoAdd" class="btn btn-primary btn-wide">+ Add Row</button>
+          <button id="spPhotoClear" class="btn btn-secondary btn-wide">Clear</button>
+        </div>
+      </div>
+
+      <div class="muted">Upload up to 4 photos.</div>
+
+      <div class="table-wrap">
+        <table class="table" id="spPhotoTable">
+          <thead>
+            <tr>
+              <th class="w-48">#</th>
+              <th>Activity</th>
+              <th>Photo Upload</th>
+              <th class="w-72">Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="photo-grid small" id="spPhotoPreviewGrid"></div>
+    </section>
+
+    <!-- Generate PDF at the END -->
+    <section class="card">
+      <button id="btnPdf" class="btn btn-primary btn-full">Generate A4 PDF</button>
+      <div class="tiny-muted">If UI looks old after deploy: hard refresh (Ctrl + Shift + R).</div>
+    </section>
+  </main>
+
+  <script src="app.js?v=7"></script>
+  <script src="pdf.js?v=7"></script>
+</body>
+</html>

@@ -18,7 +18,7 @@ body{
   color:var(--text);
 }
 
-/* Header like invoice page */
+/* Header */
 .app-header{
   background:var(--blue);
   color:#fff;
@@ -87,7 +87,7 @@ body{
   .app-header__inner{ flex-direction:column; align-items:flex-start; }
 }
 
-.field{ display:flex; flex-direction:column; gap:6px; }
+.field{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
 label{ font-size:12px; font-weight:800; color:var(--muted); }
 
 input, select, textarea{
@@ -121,12 +121,6 @@ textarea{ resize:vertical; }
 }
 .btn-secondary:hover{ filter: brightness(0.98); }
 
-.btn-outline{
-  background:#fff;
-  color:#0b2f6b;
-  border:1px solid rgba(219,231,245,.9);
-}
-
 .btn-full{
   width:100%;
   padding:16px 14px;
@@ -142,7 +136,7 @@ textarea{ resize:vertical; }
 .table{
   width:100%;
   border-collapse:collapse;
-  min-width: 980px;
+  min-width: 1100px;
 }
 .table th, .table td{
   padding:12px 10px;
@@ -166,35 +160,6 @@ textarea{ resize:vertical; }
 .tfoot{
   background:#f1f5f9;
   font-weight:900;
-}
-
-.highlight{
-  margin-top:12px;
-  border-radius:14px;
-  padding:14px;
-  background: linear-gradient(135deg, var(--accent), #dbeafe);
-  border:1px solid rgba(13,116,200,.18);
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  flex-wrap:wrap;
-}
-.highlight-left{
-  font-size:12px;
-  font-weight:950;
-  letter-spacing:.8px;
-  color:#0b2f6b;
-}
-.highlight-right{
-  font-size:14px;
-  font-weight:900;
-  color:#0b2f6b;
-}
-.highlight-value{
-  font-size:20px;
-  font-weight:950;
-  margin:0 6px;
 }
 
 .totals-card{
