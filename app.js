@@ -1,8 +1,11 @@
-/* Complete app.js (no partials)
+/* Complete app.js (FULL FILE)
    - Loads dropdowns from data/master_data.xlsx
    - Buttons always wired even if excel load fails
    - No cursor jump while typing (no rerender on each keystroke)
-   - Full sections + photos + next week plan + activity plan + special achievement
+   - Full sections + photos + next week plan (PLAN ONLY) + activity plan + special achievement
+
+   🔧 SURGICAL FIX APPLIED:
+   - Next Week Plan: Actual column removed completely (state, render, add-row template, payload remains plan-only)
 */
 
 const $ = (id) => document.getElementById(id);
@@ -35,7 +38,7 @@ const State = {
   otherRows: [],
   activityRows: [],
   photoRows: [],
-  nextWeekRows: [],
+  nextWeekRows: [],      // 🔧 Next week rows: PLAN ONLY
   actPlanRows: [],
   spDesc: "",
   spPhotoRows: []
@@ -67,6 +70,7 @@ function setOptions(selectEl, values, placeholder){
 
 function setStatus(kind, text){
   const el = $("masterStatus");
+  if(!el) return;
   el.classList.remove("pill--ok","pill--warn","pill--loading");
   if(kind === "ok") el.classList.add("pill--ok");
   else if(kind === "warn") el.classList.add("pill--warn");
@@ -76,13 +80,16 @@ function setStatus(kind, text){
 
 function showFatal(msg){
   const el = $("fatal");
+  if(!el) return;
   el.classList.remove("hidden");
   el.innerHTML = msg;
 }
 
 function clearFatal(){
-  $("fatal").classList.add("hidden");
-  $("fatal").textContent = "";
+  const el = $("fatal");
+  if(!el) return;
+  el.classList.add("hidden");
+  el.textContent = "";
 }
 
 /* ---------- Excel load ---------- */
@@ -207,7 +214,8 @@ function makeNumberInput(initial, onInput){
   el.min = "0";
   el.step = "any";
   el.value = (initial ?? "");
-  el.addEventListener("input", ()=> onInput(el.value)); // no rerender
+  // input event updates row + computed cells only; no rerender
+  el.addEventListener("input", ()=> onInput(el.value));
   return el;
 }
 
@@ -282,6 +290,10 @@ function recalcActivityTotals(){
   $("actNpiTotal").textContent = String(n);
 }
 
+/* 🔧 Next Week Summary (PLAN ONLY)
+   - Revenue  = Plan × realised
+   - Incentive opportunity = Plan × incentiveRate
+*/
 function recalcNextWeekSummary(){
   let totalRev = 0;
   let totalOpp = 0;
@@ -289,7 +301,6 @@ function recalcNextWeekSummary(){
   for(const r of State.nextWeekRows){
     const plan = toNum(r.plan);
 
-    // realised from Product List OR NPI sheet
     const realised =
       Master.productMeta.get(r.product)?.realised ??
       Master.npiMeta.get(r.product)?.realised ??
@@ -324,7 +335,6 @@ function renderNpi(){
     const sel = makeSelect(Master.npiProducts, row.product, (v)=>{
       row.product = v;
       recalcNpiSummary();
-      // update computed cells without rerender
       oppCell.textContent = rs(row.opportunity || 0);
       earnCell.textContent = rs(row.earned || 0);
     }, "Select product");
@@ -444,7 +454,6 @@ function renderActivities(){
     tr.appendChild(tdIdx);
 
     const tdAct = document.createElement("td");
-    // Only dropdown from master (no “DD”, no custom placeholder)
     tdAct.appendChild(makeSelect(Master.activityTypes, row.activity, (v)=>{ row.activity = v; }, "Select activity"));
     tr.appendChild(tdAct);
 
@@ -533,6 +542,7 @@ function renderPhotoPreview(){
     });
 }
 
+/* 🔧 Next Week render (PLAN ONLY): no Actual input, no row.actual */
 function renderNextWeek(){
   const tbody = $("tblNextWeek").querySelector("tbody");
   tbody.innerHTML = "";
@@ -562,9 +572,7 @@ function renderNextWeek(){
     }));
     tr.appendChild(tdPlan);
 
-    const tdActual = document.createElement("td"); tdActual.className="num";
-    tdActual.appendChild(makeNumberInput(row.actual, (v)=>{ row.actual=v; }));
-    tr.appendChild(tdActual);
+    // ❌ Actual column removed completely
 
     const tdRev = document.createElement("td"); tdRev.className="num";
     const revCell = document.createElement("span");
@@ -713,7 +721,7 @@ function wireButtons(){
     State.otherRows = [];
     State.activityRows = [];
     State.photoRows = [];
-    State.nextWeekRows = [];
+    State.nextWeekRows = [];     // plan-only
     State.actPlanRows = [];
     State.spDesc = "";
     State.spPhotoRows = [];
@@ -775,10 +783,11 @@ function wireButtons(){
     renderPhotos();
   });
 
-  // Next week
+  // Next week (PLAN ONLY)
   $("btnNwAdd").addEventListener("click", ()=>{
     if(State.nextWeekRows.length >= CFG.maxNextWeekRows) return alert(`Max ${CFG.maxNextWeekRows} rows allowed.`);
-    State.nextWeekRows.push({ product:"", plan:"", actual:"", revenue:0, incentive:0 });
+    // 🔧 no "actual" field
+    State.nextWeekRows.push({ product:"", plan:"", revenue:0, incentive:0 });
     renderNextWeek();
   });
   $("btnNwClear").addEventListener("click", ()=>{
@@ -832,7 +841,7 @@ function wireButtons(){
       otherRows: State.otherRows,
       activityRows: State.activityRows,
       photos: State.photoRows.filter(p=>p.dataUrl).slice(0, CFG.maxActPhotos),
-      nextWeekRows: State.nextWeekRows,
+      nextWeekRows: State.nextWeekRows, // 🔧 plan-only rows
       actPlanRows: State.actPlanRows,
       spDesc: $("spDesc").value || "",
       spPhotos: State.spPhotoRows.filter(p=>p.dataUrl).slice(0, CFG.maxSpPhotos)
@@ -859,7 +868,13 @@ async function boot(){
   setOptions($("week"), CFG.weeks, "Select Week");
 
   // Render empty tables
-  renderNpi(); renderOther(); renderActivities(); renderPhotos(); renderNextWeek(); renderActPlan(); renderSpPhotos();
+  renderNpi();
+  renderOther();
+  renderActivities();
+  renderPhotos();
+  renderNextWeek();
+  renderActPlan();
+  renderSpPhotos();
 
   clearFatal();
   setStatus("loading", "Loading master data…");
