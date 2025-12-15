@@ -1,16 +1,14 @@
 /* Complete pdf.js (single flowing PDF, no forced page break per section)
-   Includes required exact messages:
-   - CONGRATULATIONS YOU HAVE EARNED ₹ ___ !!!
-   - YOU LOSE ₹ ___
-   - YOUR NEXT WEEK INCENTIVE OPPORTUNITY ₹ ___ !!!
-   - TOTAL REVENUE ₹ ___
-   Includes photo grids without overlap.
+   Exact messages preserved.
+   Next Week Plan uses PLAN only (no Actual column).
+   ₹ formatting fixed (no overflow / spacing issues).
 */
+function formatRs(value){
+  return "₹ " + Number(value || 0).toLocaleString("en-IN");
+}
 
 (function(){
   const { jsPDF } = window.jspdf;
-
-  function money(rsFn, n){ return `₹ ${rsFn(n)}`; }
 
   function ensureSpace(doc, y, needed, pageState){
     if(y + needed <= 280) return y;
@@ -42,21 +40,20 @@
     return y + 6;
   }
 
-  function highlightBox(doc, textLeft, textRight, y, pageState, style){
+  function highlightBox(doc, left, right, y, pageState, style){
     y = ensureSpace(doc, y, 18, pageState);
-    if(style === "success") doc.setFillColor(233, 255, 245);
-    else if(style === "danger") doc.setFillColor(255, 232, 234);
-    else doc.setFillColor(224, 242, 254);
+
+    if(style === "success") doc.setFillColor(233,255,245);
+    else if(style === "danger") doc.setFillColor(255,232,234);
+    else doc.setFillColor(224,242,254);
 
     doc.roundedRect(15, y, 180, 14, 3, 3, "F");
     doc.setFont("helvetica","bold");
     doc.setFontSize(10);
-    doc.setTextColor(20);
 
-    doc.text(textLeft, 18, y+9);
-    doc.text(textRight, 192, y+9, {align:"right"});
+    doc.text(left, 18, y+9);
+    doc.text(right, 192, y+9, {align:"right"});
 
-    doc.setTextColor(0);
     doc.setFont("helvetica","normal");
     return y + 18;
   }
@@ -67,9 +64,9 @@
       body,
       startY,
       margin: { left: 15, right: 15 },
-      styles: { fontSize: 9, cellPadding: 3, valign: "middle" },
-      headStyles: { fillColor: [13,116,200], textColor: 255, fontStyle:"bold" },
-      alternateRowStyles: { fillColor: [250,250,250] }
+      styles: { fontSize: 9, cellPadding: 3, valign:"middle" },
+      headStyles: { fillColor:[13,116,200], textColor:255, fontStyle:"bold" },
+      alternateRowStyles:{ fillColor:[250,250,250] }
     });
     return doc.lastAutoTable.finalY + 8;
   }
@@ -78,69 +75,57 @@
     y = sectionTitle(doc, title, y, pageState);
 
     if(!photos.length){
-      y = ensureSpace(doc, y, 12, pageState);
-      doc.setFontSize(10);
-      doc.text("No photos uploaded.", 15, y+6);
-      return y + 14;
+      y = ensureSpace(doc, y, 10, pageState);
+      doc.setFontSize(9);
+      doc.text("No photos uploaded.", 15, y);
+      return y + 12;
     }
 
-    const x0 = 15;
-    const imgW = 80;
-    const imgH = 55;
-    const gapX = 10;
-    const gapY = 22;
-
-    let x = x0;
-    let col = 0;
+    const imgW = 80, imgH = 55, gapX = 10, gapY = 22;
+    let x = 15, col = 0;
 
     for(const p of photos){
-      y = ensureSpace(doc, y, imgH + 22, pageState);
+      y = ensureSpace(doc, y, imgH + gapY, pageState);
 
       try{
         doc.addImage(p.dataUrl, "JPEG", x, y, imgW, imgH);
-      }catch(e){
-        // ignore bad image
-      }
+      }catch{}
 
-      doc.setFont("helvetica","bold");
       doc.setFontSize(9);
-      doc.setTextColor(90);
-      doc.text(String(p.activity || "Activity"), x, y + imgH + 6);
-      doc.setTextColor(0);
+      doc.setFont("helvetica","bold");
+      doc.text(p.activity || "Activity", x, y + imgH + 6);
       doc.setFont("helvetica","normal");
 
       col++;
       if(col === 2){
         col = 0;
-        x = x0;
+        x = 15;
         y += imgH + gapY;
       }else{
         x += imgW + gapX;
       }
     }
-
-    // reserve space after the final row so next section never overlaps
     return y + 10;
   }
 
-  window.generatePerformancePdf = function(payload, Master, rsFn){
-    const doc = new jsPDF({unit:"mm", format:"a4", orientation:"portrait"});
+  window.generatePerformancePdf = function(payload, Master){
+    const doc = new jsPDF({unit:"mm", format:"a4"});
     const pageState = { page: 1 };
 
     header(doc, pageState);
     let y = 28;
 
-    // 1) MDO
+    /* 1) MDO */
     y = sectionTitle(doc, "1) MDO Information", y, pageState);
-    doc.setFontSize(10);
     const info = [
-      ["Name", payload.mdo.name],
-      ["HQ", payload.mdo.hq],
-      ["Region", payload.mdo.region],
-      ["Territory", payload.mdo.territory],
-      ["Month", payload.mdo.month],
-      ["Week", payload.mdo.week]
+      ["Name", payload.mdo?.name],
+      ["HQ", payload.mdo?.hq],
+      ["Region", payload.mdo?.region],
+      ["Territory", payload.mdo?.territory],
+      ["Month", payload.mdo?.month],
+      ["Week", payload.mdo?.week]
     ];
+    doc.setFontSize(10);
     for(const [k,v] of info){
       y = ensureSpace(doc, y, 8, pageState);
       doc.setFont("helvetica","bold");
@@ -149,202 +134,118 @@
       doc.text(String(v || ""), 55, y);
       y += 7;
     }
-    y += 4;
 
-    // 2) NPI
+    /* 2) NPI */
     y = sectionTitle(doc, "2) NPI Performance Update", y, pageState);
+    let npiOpp=0, npiEarn=0;
 
-    let npiOppTotal = 0, npiEarnTotal = 0;
-    const npiBody = (payload.npiRows || []).map((r, i)=>{
-      const meta = Master.npiMeta.get(r.product) || { incentiveRate: 0 };
-      const plan = Number(String(r.plan||0).replace(/,/g,"")) || 0;
-      const actual = Number(String(r.actual||0).replace(/,/g,"")) || 0;
-      const opp = plan * meta.incentiveRate;
-      const earn = actual * meta.incentiveRate;
-      npiOppTotal += opp;
-      npiEarnTotal += earn;
+    const npiBody = (payload.npiRows||[]).map((r,i)=>{
+      const rate = Master.npiMeta.get(r.product)?.incentiveRate || 0;
+      const plan = Number(r.plan||0);
+      const actual = Number(r.actual||0);
+      const opp = plan * rate;
+      const earn = actual * rate;
+      npiOpp += opp; npiEarn += earn;
+
       return [
-        String(i+1),
-        r.product || "",
-        String(r.plan || ""),
-        String(r.actual || ""),
-        money(rsFn, opp),
-        money(rsFn, earn)
+        i+1, r.product||"", r.plan||"", r.actual||"",
+        formatRs(opp), formatRs(earn)
       ];
     });
 
     y = autoTable(doc,
-      ["#", "Product", "Plan (L/Kg)", "Actual (L/Kg)", "Total Incentive Opportunity", "Total Incentive Earned"],
-      npiBody,
-      y
+      ["#","Product","Plan (L/Kg)","Actual (L/Kg)","Total Incentive Opportunity","Total Incentive Earned"],
+      npiBody, y
     );
 
-    const npiLose = Math.max(0, npiOppTotal - npiEarnTotal);
-
-    // EXACT wording requested (both in UI and PDF)
-    y = highlightBox(
-      doc,
+    y = highlightBox(doc,
       "CONGRATULATIONS YOU HAVE EARNED",
-      `${money(rsFn, npiEarnTotal)} !!!`,
+      `${formatRs(npiEarn)} !!!`,
       y, pageState, "success"
     );
-    y = highlightBox(
-      doc,
+    y = highlightBox(doc,
       "YOU LOSE",
-      `${money(rsFn, npiLose)}`,
+      formatRs(Math.max(0, npiOpp-npiEarn)),
       y, pageState, "danger"
     );
 
-    // 3) Other products
+    /* 3) Other Products */
     y = sectionTitle(doc, "3) Other Product Performance Update", y, pageState);
+    let otherTotal=0;
 
-    let otherTotal = 0;
-    const otherBody = (payload.otherRows || []).map((r,i)=>{
-      const meta = Master.productMeta.get(r.product) || { realised: 0 };
-      const actual = Number(String(r.actual||0).replace(/,/g,"")) || 0;
-      const rev = actual * meta.realised;
-      otherTotal += rev;
-      return [
-        String(i+1),
-        r.product || "",
-        String(r.plan || ""),
-        String(r.actual || ""),
-        money(rsFn, rev)
-      ];
+    const otherBody=(payload.otherRows||[]).map((r,i)=>{
+      const realised=Master.productMeta.get(r.product)?.realised||0;
+      const actual=Number(r.actual||0);
+      const rev=actual*realised;
+      otherTotal+=rev;
+      return [i+1,r.product||"",r.plan||"",r.actual||"",formatRs(rev)];
     });
 
     y = autoTable(doc,
-      ["#", "Product", "Plan (L/Kg)", "Actual (L/Kg)", "Total Revenue"],
-      otherBody,
-      y
+      ["#","Product","Plan (L/Kg)","Actual (L/Kg)","Total Revenue"],
+      otherBody, y
     );
 
-    y = highlightBox(doc, "TOTAL REVENUE EARNED", money(rsFn, otherTotal), y, pageState, "info");
+    y = highlightBox(doc,"TOTAL REVENUE EARNED",formatRs(otherTotal),y,pageState,"info");
 
-    // 4) Activities update
+    /* 4) Activities */
     y = sectionTitle(doc, "4) Activities Update", y, pageState);
-
-    let ap=0, aa=0, an=0;
-    const actBody = (payload.activityRows || []).map((r,i)=>{
-      ap += Number(r.planNo||0) || 0;
-      aa += Number(r.actualNo||0) || 0;
-      an += Number(r.npiNo||0) || 0;
-      return [
-        String(i+1),
-        r.activity || "",
-        String(r.planNo || ""),
-        String(r.actualNo || ""),
-        String(r.npiNo || "")
-      ];
-    });
-
+    const actBody=(payload.activityRows||[]).map((r,i)=>[
+      i+1,r.activity||"",r.planNo||"",r.actualNo||"",r.npiNo||""
+    ]);
     y = autoTable(doc,
-      ["#", "Activity", "Plan No", "Actual No", "NPI Focused Activity No"],
-      actBody,
-      y
+      ["#","Activity","Plan No","Actual No","NPI Focused Activity No"],
+      actBody, y
     );
 
-    y = ensureSpace(doc, y, 10, pageState);
-    doc.setFont("helvetica","bold");
-    doc.setFontSize(10);
-    doc.text(`TOTAL  Plan: ${ap}   |   Actual: ${aa}   |   NPI Focused: ${an}`, 15, y);
-    doc.setFont("helvetica","normal");
-    y += 10;
+    /* 5) Photos */
+    y = addPhotos(doc,"5) Activities Photos",payload.photos||[],y,pageState);
 
-    // 5) Photos
-    y = addPhotos(doc, "5) Activities Photos", payload.photos || [], y, pageState);
-
-    // 6) Next week
+    /* 6) Next Week – PLAN ONLY */
     y = sectionTitle(doc, "6) Next Week Plan – Product Plan", y, pageState);
+    let nwRev=0,nwOpp=0;
 
-    let nwRev=0, nwOpp=0;
-    const nwBody = (payload.nextWeekRows || []).map((r,i)=>{
-      const plan = Number(String(r.plan||0).replace(/,/g,"")) || 0;
-
-      const realised =
-        Master.productMeta.get(r.product)?.realised ??
-        Master.npiMeta.get(r.product)?.realised ??
-        0;
-
-      const rate = Master.npiMeta.get(r.product)?.incentiveRate ?? 0;
-
-      const rev = plan * realised;
-      const opp2 = plan * rate;
-
-      nwRev += rev;
-      nwOpp += opp2;
-
-      return [
-        String(i+1),
-        r.product || "",
-        String(r.plan || ""),
-        String(r.actual || ""),
-        money(rsFn, rev),
-        money(rsFn, opp2)
-      ];
+    const nwBody=(payload.nextWeekRows||[]).map((r,i)=>{
+      const plan=Number(r.plan||0);
+      const realised=Master.productMeta.get(r.product)?.realised||0;
+      const rate=Master.npiMeta.get(r.product)?.incentiveRate||0;
+      const rev=plan*realised;
+      const opp=plan*rate;
+      nwRev+=rev; nwOpp+=opp;
+      return [i+1,r.product||"",r.plan||"",formatRs(rev),formatRs(opp)];
     });
 
     y = autoTable(doc,
-      ["#", "Product", "Plan (L/Kg)", "Actual (L/Kg)", "Total Revenue", "Total Incentive Earned"],
-      nwBody,
-      y
+      ["#","Product","Plan (L/Kg)","Total Revenue","Total Incentive Earned"],
+      nwBody, y
     );
 
-    // EXACT wording requested (both in UI and PDF)
-    y = highlightBox(
-      doc,
+    y = highlightBox(doc,
       "YOUR NEXT WEEK INCENTIVE OPPORTUNITY",
-      `${money(rsFn, nwOpp)} !!!`,
-      y, pageState, "success"
+      `${formatRs(nwOpp)} !!!`,
+      y,pageState,"success"
     );
-    y = highlightBox(
-      doc,
-      "TOTAL REVENUE",
-      money(rsFn, nwRev),
-      y, pageState, "info"
-    );
+    y = highlightBox(doc,"TOTAL REVENUE",formatRs(nwRev),y,pageState,"info");
 
-    // 7) Activities plan
+    /* 7) Activities Plan */
     y = sectionTitle(doc, "7) Activities Plan", y, pageState);
-
-    const planBody = (payload.actPlanRows || []).map((r,i)=>{
-      const villages = String(r.villages || "");
-      const vCount = villages.split(",").map(s=>s.trim()).filter(Boolean).length;
-      return [
-        String(i+1),
-        r.activity || "",
-        String(r.planNo || ""),
-        villages,
-        String(vCount)
-      ];
+    const planBody=(payload.actPlanRows||[]).map((r,i)=>{
+      const villages=(r.villages||"").split(",").filter(Boolean);
+      return [i+1,r.activity||"",r.planNo||"",villages.join(", "),villages.length];
     });
-
     y = autoTable(doc,
-      ["#", "Activity", "Plan No", "Village Names", "Village No"],
-      planBody,
-      y
+      ["#","Activity","Plan No","Village Names","Village No"],
+      planBody,y
     );
 
-    // 8) Special achievement
+    /* 8) Special Achievement */
     y = sectionTitle(doc, "8) Special Achievement", y, pageState);
-    y = ensureSpace(doc, y, 10, pageState);
-
-    doc.setFont("helvetica","bold");
-    doc.setFontSize(10);
-    doc.text("Description:", 15, y);
-    y += 6;
-
-    doc.setFont("helvetica","normal");
     doc.setFontSize(9);
-    const desc = (payload.spDesc || "—").trim();
-    const wrapped = doc.splitTextToSize(desc, 180);
-    y = ensureSpace(doc, y, wrapped.length*5 + 10, pageState);
-    doc.text(wrapped, 15, y);
-    y += wrapped.length*5 + 8;
+    doc.text(doc.splitTextToSize(payload.spDesc||"—",180),15,y);
 
-    y = addPhotos(doc, "Special Achievement Photos", payload.spPhotos || [], y, pageState);
+    y = addPhotos(doc,"Special Achievement Photos",payload.spPhotos||[],y+10,pageState);
 
-    const safeName = (payload.mdo?.name || "Report").replace(/[^\w]+/g, "_");
+    const safeName=(payload.mdo?.name||"Report").replace(/[^\w]+/g,"_");
     doc.save(`Performance_Report_${safeName}.pdf`);
   };
 })();
