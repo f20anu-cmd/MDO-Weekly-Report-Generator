@@ -260,3 +260,7 @@ textarea{ resize:vertical; }
   margin:12px 0;
 }
 .hidden{ display:none; }
+/* Hide master data status pill */
+#masterStatus {
+  display: none !important;
+}
